@@ -666,7 +666,7 @@ function CanWallPage({ T, isAdmin }) {
     } finally { setUploading(false); }
   };
 
-  const addPhoto = () => {
+  const addPhoto = async () => {
     if (!newImage) return;
     const photo = { id: Date.now().toString(), image: newImage, caption: newCaption.trim(), addedAt: Date.now() };
     if (db.isConfigured()) {
