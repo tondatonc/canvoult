@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import * as db from "./db.js";
 
 // Password is checked via hashed comparison — do not store plaintext in production
 // Replace this with your own password hash using: btoa(encodeURIComponent("yourpassword"))
@@ -168,9 +169,36 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
     if (t && !tags.includes(t)) setTags([...tags, t]);
     setTagInput("");
   };
-  const handleFile = f => {
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+
+  const handleFile = async f => {
     if (!f || !f.type.startsWith("image/")) return;
-    const r = new FileReader(); r.onload = e => setImage(e.target.result); r.readAsDataURL(f);
+    // Try Vercel Blob first; fall back to base64 if no API (local dev)
+    setUploading(true); setUploadErr("");
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": f.type,
+          "x-filename": `can-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, "_")}`,
+          "x-canvault-auth": atob(_PH),
+        },
+        body: f,
+      });
+      if (res.ok) {
+        const { url } = await res.json();
+        setImage(url);
+      } else {
+        throw new Error("API not available");
+      }
+    } catch {
+      // Fallback: base64 (works locally, not shared across devices)
+      const r = new FileReader(); r.onload = e => setImage(e.target.result); r.readAsDataURL(f);
+      setUploadErr("⚠️ Saved locally only — Blob API not reachable");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -187,8 +215,13 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
         onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
         style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 14, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
         <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-        {image ? <img src={image} alt="preview" style={{ height: 80, borderRadius: 8, objectFit: "contain" }} /> : <><span style={{ fontSize: 26 }}>📸</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.1em" }}>DROP OR CLICK TO UPLOAD</p></>}
+        {uploading
+          ? <><span style={{ fontSize: 26, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>UPLOADING…</p></>
+          : image
+            ? <img src={image} alt="preview" style={{ height: 80, borderRadius: 8, objectFit: "contain" }} />
+            : <><span style={{ fontSize: 26 }}>📸</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.1em" }}>DROP OR CLICK TO UPLOAD</p></>}
       </div>
+      {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 8, letterSpacing: "0.05em" }}>{uploadErr}</p>}
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>CAN NAME</label>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Fanta Orange 330ml"
@@ -274,19 +307,33 @@ function LoginModal({ T, onLogin, onClose }) {
   );
 }
 
+// ─── LOADING SPINNER ──────────────────────────────────────────────────────────
+
+function LoadingSpinner({ T }) {
+  return (
+    <div style={{ textAlign: "center", padding: "60px 0" }}>
+      <div style={{ fontSize: 40, animation: "spin 1s linear infinite", display: "inline-block", marginBottom: 12 }}>🥤</div>
+      <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 11, letterSpacing: "0.2em" }}>LOADING…</p>
+    </div>
+  );
+}
+
 // ─── COLLECTION PAGE ──────────────────────────────────────────────────────────
 
 function CollectionPage({ T, isAdmin }) {
-  const [cans, setCans] = useState(() => {
-    try { const s = localStorage.getItem("canvault_cans"); return s ? JSON.parse(s) : SAMPLE_CANS; } catch { return SAMPLE_CANS; }
-  });
+  const [cans, setCans] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTags, setActiveTags] = useState([]);
   const [sort, setSort] = useState("newest");
   const [viewMode, setViewMode] = useState("grid");
-  const [modal, setModal] = useState(null); // null | 'add' | {can} | {can, edit:true}
+  const [modal, setModal] = useState(null);
 
-  useEffect(() => { localStorage.setItem("canvault_cans", JSON.stringify(cans)); }, [cans]);
+  useEffect(() => {
+    if (!db.isConfigured()) { setCans(SAMPLE_CANS); setLoading(false); return; }
+    db.getCans().then(rows => { setCans(rows.map(db.rowToCan)); setLoading(false); })
+      .catch(() => { setCans(SAMPLE_CANS); setLoading(false); });
+  }, []);
 
   const allTags = [...new Set(cans.flatMap(c => c.tags))].sort();
   const filtered = sortCans(cans.filter(can => {
@@ -295,13 +342,30 @@ function CollectionPage({ T, isAdmin }) {
       (activeTags.length === 0 || activeTags.every(t => can.tags.includes(t)));
   }), sort);
 
-  const saveCan = can => {
-    setCans(p => p.find(c => c.id === can.id) ? p.map(c => c.id === can.id ? can : c) : [can, ...p]);
+  const saveCan = async can => {
+    if (db.isConfigured()) {
+      await db.upsertCan(can).catch(console.error);
+      const rows = await db.getCans().catch(() => null);
+      if (rows) setCans(rows.map(db.rowToCan));
+    } else {
+      setCans(p => p.find(c => c.id === can.id) ? p.map(c => c.id === can.id ? can : c) : [can, ...p]);
+    }
     setModal(null);
+  };
+
+  const removeCan = async id => {
+    if (db.isConfigured()) await db.deleteCan(id).catch(console.error);
+    setCans(p => p.filter(c => c.id !== id));
   };
 
   return (
     <div>
+      {!db.isConfigured() && (
+        <div style={{ background: "#FF6B0022", border: "2px solid #FF6B00", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#FF6B00", letterSpacing: "0.1em" }}>
+          ⚠️ SUPABASE NOT CONFIGURED — showing sample data. See setup guide.
+        </div>
+      )}
+      {loading ? <LoadingSpinner T={T} /> : <>
       {/* Search */}
       <div style={{ position: "relative", marginBottom: 14 }}>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#C8102E", borderRadius: "11px 0 0 11px", fontSize: 17 }}>🔍</div>
@@ -354,13 +418,14 @@ function CollectionPage({ T, isAdmin }) {
       {modal === "add" && <AddEditModal T={T} onSave={saveCan} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin}
-          onDelete={id => { setCans(p => p.filter(c => c.id !== id)); setModal(null); }}
+          onDelete={id => { removeCan(id); setModal(null); }}
           onEdit={() => setModal({ can: modal.can, edit: true })}
           onClose={() => setModal(null)} />
       )}
       {modal?.can && modal.edit && (
         <AddEditModal T={T} initial={modal.can} onSave={saveCan} onClose={() => setModal(null)} />
       )}
+      </>}
     </div>
   );
 }
@@ -414,20 +479,34 @@ function TileCard({ can, i, T, onClick }) {
 // ─── WISHLIST PAGE ────────────────────────────────────────────────────────────
 
 function WishlistPage({ T, isAdmin }) {
-  const [wishes, setWishes] = useState(() => {
-    try { const s = localStorage.getItem("canvault_wish"); return s ? JSON.parse(s) : SAMPLE_WISHLIST; } catch { return SAMPLE_WISHLIST; }
-  });
+  const [wishes, setWishes] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("newest");
   const [viewMode, setViewMode] = useState("grid");
   const [modal, setModal] = useState(null);
 
-  useEffect(() => { localStorage.setItem("canvault_wish", JSON.stringify(wishes)); }, [wishes]);
+  useEffect(() => {
+    if (!db.isConfigured()) { setWishes(SAMPLE_WISHLIST); setLoading(false); return; }
+    db.getWishlist().then(rows => { setWishes(rows.map(db.rowToWish)); setLoading(false); })
+      .catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
+  }, []);
 
   const sorted = sortCans(wishes, sort);
 
-  const saveWish = w => {
-    setWishes(p => p.find(x => x.id === w.id) ? p.map(x => x.id === w.id ? w : x) : [w, ...p]);
+  const saveWish = async w => {
+    if (db.isConfigured()) {
+      await db.upsertWish(w).catch(console.error);
+      const rows = await db.getWishlist().catch(() => null);
+      if (rows) setWishes(rows.map(db.rowToWish));
+    } else {
+      setWishes(p => p.find(x => x.id === w.id) ? p.map(x => x.id === w.id ? w : x) : [w, ...p]);
+    }
     setModal(null);
+  };
+
+  const removeWish = async id => {
+    if (db.isConfigured()) await db.deleteWish(id).catch(console.error);
+    setWishes(p => p.filter(w => w.id !== id));
   };
 
   return (
@@ -440,6 +519,7 @@ function WishlistPage({ T, isAdmin }) {
         </div>
       </div>
 
+      {loading ? <LoadingSpinner T={T} /> : <>
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}` }}>
@@ -466,13 +546,14 @@ function WishlistPage({ T, isAdmin }) {
       {modal === "add" && <AddEditModal T={T} extraFields={["note"]} onSave={saveWish} onClose={() => setModal(null)} />}
       {modal?.wish && !modal.edit && (
         <WishDetailModal T={T} wish={modal.wish} isAdmin={isAdmin}
-          onDelete={id => { setWishes(p => p.filter(w => w.id !== id)); setModal(null); }}
+          onDelete={id => { removeWish(id); setModal(null); }}
           onEdit={() => setModal({ wish: modal.wish, edit: true })}
           onClose={() => setModal(null)} />
       )}
       {modal?.wish && modal.edit && (
         <AddEditModal T={T} initial={modal.wish} extraFields={["note"]} onSave={saveWish} onClose={() => setModal(null)} />
       )}
+      </>}
     </div>
   );
 }
@@ -544,9 +625,8 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose }) {
 // ─── CAN WALL PAGE ────────────────────────────────────────────────────────────
 
 function CanWallPage({ T, isAdmin }) {
-  const [photos, setPhotos] = useState(() => {
-    try { const s = localStorage.getItem("canvault_wall"); return s ? JSON.parse(s) : []; } catch { return []; }
-  });
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [addModal, setAddModal] = useState(false);
   const [viewPhoto, setViewPhoto] = useState(null);
   const fileRef = useRef();
@@ -554,17 +634,54 @@ function CanWallPage({ T, isAdmin }) {
   const [newCaption, setNewCaption] = useState("");
   const [newImage, setNewImage] = useState(null);
 
-  useEffect(() => { localStorage.setItem("canvault_wall", JSON.stringify(photos)); }, [photos]);
+  useEffect(() => {
+    if (!db.isConfigured()) { setLoading(false); return; }
+    db.getWallPhotos().then(rows => { setPhotos(rows.map(db.rowToPhoto)); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
 
-  const handleFile = f => {
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+
+  const handleFile = async f => {
     if (!f || !f.type.startsWith("image/")) return;
-    const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(f);
+    setUploading(true); setUploadErr("");
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": f.type,
+          "x-filename": `wall-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, "_")}`,
+          "x-canvault-auth": atob(_PH),
+        },
+        body: f,
+      });
+      if (res.ok) {
+        const { url } = await res.json();
+        setNewImage(url);
+      } else { throw new Error(); }
+    } catch {
+      const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(f);
+      setUploadErr("⚠️ Saved locally only — Blob API not reachable");
+    } finally { setUploading(false); }
   };
 
   const addPhoto = () => {
     if (!newImage) return;
-    setPhotos(p => [{ id: Date.now().toString(), image: newImage, caption: newCaption.trim(), addedAt: Date.now() }, ...p]);
+    const photo = { id: Date.now().toString(), image: newImage, caption: newCaption.trim(), addedAt: Date.now() };
+    if (db.isConfigured()) {
+      await db.addWallPhoto(photo).catch(console.error);
+      const rows = await db.getWallPhotos().catch(() => null);
+      if (rows) setPhotos(rows.map(db.rowToPhoto));
+    } else {
+      setPhotos(p => [photo, ...p]);
+    }
     setNewImage(null); setNewCaption(""); setAddModal(false);
+  };
+
+  const removePhoto = async id => {
+    if (db.isConfigured()) await db.deleteWallPhoto(id).catch(console.error);
+    setPhotos(p => p.filter(x => x.id !== id));
   };
 
   return (
@@ -580,7 +697,7 @@ function CanWallPage({ T, isAdmin }) {
         )}
       </div>
 
-      {photos.length === 0 ? (
+      {loading ? <LoadingSpinner T={T} /> : photos.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 20px", border: `2px dashed ${T.border}`, borderRadius: 14, background: T.stripe }}>
           <div style={{ fontSize: 52, marginBottom: 12 }}>🗄️</div>
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 20, fontStyle: "italic", marginBottom: 6 }}>No wall photos yet</p>
@@ -603,11 +720,12 @@ function CanWallPage({ T, isAdmin }) {
               {(photo.caption || true) && (
                 <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
+
                     {photo.caption && <div style={{ fontFamily: "Georgia,serif", fontStyle: "italic", fontSize: 13, color: T.text, marginBottom: 2 }}>{photo.caption}</div>}
                     <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{new Date(photo.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
                   </div>
                   {isAdmin && (
-                    <button onClick={e => { e.stopPropagation(); setPhotos(p => p.filter(x => x.id !== photo.id)); }} style={{ background: "none", border: "none", color: "#C8102E66", fontSize: 18, cursor: "pointer", padding: 4 }}>🗑</button>
+                    <button onClick={e => { e.stopPropagation(); removePhoto(photo.id); }} style={{ background: "none", border: "none", color: "#C8102E66", fontSize: 18, cursor: "pointer", padding: 4 }}>🗑</button>
                   )}
                 </div>
               )}
@@ -627,10 +745,13 @@ function CanWallPage({ T, isAdmin }) {
             onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
             style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-            {newImage
-              ? <img src={newImage} alt="preview" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
-              : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>DROP PHOTO OR CLICK TO UPLOAD</p><p style={{ color: T.textFaint, fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic" }}>Your shelf, your wall, your display</p></>}
+            {uploading
+              ? <><span style={{ fontSize: 36, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>UPLOADING…</p></>
+              : newImage
+                ? <img src={newImage} alt="preview" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
+                : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>DROP PHOTO OR CLICK TO UPLOAD</p><p style={{ color: T.textFaint, fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic" }}>Your shelf, your wall, your display</p></>}
           </div>
+          {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 8 }}>{uploadErr}</p>}
           <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 5 }}>CAPTION (optional)</label>
           <input value={newCaption} onChange={e => setNewCaption(e.target.value)} placeholder="e.g. My bedroom shelf, Jan 2025"
             style={{ width: "100%", padding: "10px 13px", marginBottom: 16, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
@@ -700,66 +821,51 @@ export default function App() {
         .hdr{animation:slideDown 0.4s ease}
         button:active{opacity:0.85}
         .mob-menu{animation:slideIn 0.2s ease}
+        @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
 
       {/* HEADER */}
       <header className="hdr" style={{ background: "#C8102E", backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 28px,#00000012 28px,#00000012 29px)", borderBottom: "5px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
-        {/* Ticker — hidden on very small screens */}
-        <div style={{ background: "#8a0000", padding: "3px 20px", display: "flex", justifyContent: "space-between", overflow: "hidden" }}>
-          {["★ EST. 2024 ★", "★ 100% SATISFACTION ★", "★ EVERY CAN COUNTS ★"].map(t => (
+        <div style={{ background: "#8a0000", padding: "3px 12px", display: "flex", justifyContent: "center", gap: 16, overflow: "hidden" }}>
+          {["★ EST. 2024 ★", "★ EVERY CAN COUNTS ★"].map(t => (
             <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>{t}</span>
           ))}
         </div>
 
-        <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          {/* Logo */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", fontSize: 20, flexShrink: 0 }}>🥤</div>
+        {/* Single row: logo left, dark toggle + hamburger right. Nothing else. */}
+        <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", fontSize: 20 }}>🥤</div>
             <div>
               <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#FFF5E6", lineHeight: 1, textShadow: "2px 2px 0 #7a0000" }}>CanVault</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: "#FFD0C0", letterSpacing: "0.2em" }}>SODA CAN COLLECTION</div>
             </div>
           </div>
 
-          {/* Desktop nav — hidden on mobile */}
-          <nav style={{ display: "flex", gap: 4, flex: 1, justifyContent: "center" }} className="desktop-nav">
-            {NAV.map(n => (
-              <button key={n.id} onClick={() => goTo(n.id)} style={{ background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C066"}`, borderRadius: "999px", padding: "6px 14px", color: page === n.id ? "#C8102E" : "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", transition: "all 0.18s", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
-                <span>{n.icon}</span><span>{n.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          {/* Right controls */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-            <button onClick={() => setDark(d => !d)} style={{ background: dark ? "#FFF5E6" : "#8a0000", border: `2px solid ${dark ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "6px 10px", color: dark ? "#C8102E" : "#FFF5E6", fontFamily: "'Oswald',sans-serif", fontSize: 14, cursor: "pointer", transition: "all 0.2s", lineHeight: 1 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={() => setDark(d => !d)} style={{ background: dark ? "#FFF5E6" : "#8a0000", border: `2px solid ${dark ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "7px 11px", color: dark ? "#C8102E" : "#FFF5E6", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>
               {dark ? "☀️" : "🌙"}
             </button>
-            {isAdmin
-              ? <button onClick={() => setIsAdmin(false)} style={{ background: "transparent", border: "2px solid #FFD0C077", borderRadius: "999px", padding: "6px 10px", color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}>OUT</button>
-              : <button onClick={() => setShowLogin(true)} style={{ background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: "999px", padding: "6px 12px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}>🔐</button>
-            }
-            {/* Hamburger */}
-            <button onClick={() => setMenuOpen(m => !m)} style={{ background: menuOpen ? "#FFF5E6" : "#8a0000", border: `2px solid ${menuOpen ? "#FFE8D0" : "#5a0000"}`, borderRadius: 8, padding: "6px 9px", color: menuOpen ? "#C8102E" : "#FFF5E6", cursor: "pointer", fontSize: 16, lineHeight: 1 }} aria-label="Menu">
+            <button onClick={() => setMenuOpen(m => !m)} style={{ background: menuOpen ? "#FFF5E6" : "#8a0000", border: `2px solid ${menuOpen ? "#FFE8D0" : "#5a0000"}`, borderRadius: 10, padding: "7px 12px", color: menuOpen ? "#C8102E" : "#FFF5E6", cursor: "pointer", fontSize: 18, lineHeight: 1, fontWeight: 700 }}>
               {menuOpen ? "✕" : "☰"}
             </button>
           </div>
         </div>
 
-        {/* Dropdown mobile menu */}
+        {/* Dropdown menu — all navigation lives here */}
         {menuOpen && (
-          <div className="mob-menu" style={{ background: "#a00020", borderTop: "2px solid #7a0000", padding: "8px 16px 14px" }}>
+          <div className="mob-menu" style={{ background: "#a00020", borderTop: "2px solid #7a0000", padding: "10px 14px 16px" }}>
             {NAV.map(n => (
-              <button key={n.id} onClick={() => goTo(n.id)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 16px", marginBottom: 4, background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C044"}`, borderRadius: 10, color: page === n.id ? "#C8102E" : "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer", textAlign: "left" }}>
-                <span style={{ fontSize: 20 }}>{n.icon}</span>
+              <button key={n.id} onClick={() => goTo(n.id)} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "13px 16px", marginBottom: 6, background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C033"}`, borderRadius: 11, color: page === n.id ? "#C8102E" : "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
+                <span style={{ fontSize: 22 }}>{n.icon}</span>
                 <span>{n.label}</span>
-                {page === n.id && <span style={{ marginLeft: "auto", fontSize: 10 }}>●</span>}
+                {page === n.id && <span style={{ marginLeft: "auto" }}>●</span>}
               </button>
             ))}
-            <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 6, paddingTop: 10, display: "flex", gap: 8 }}>
+            <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 12 }}>
               {isAdmin
-                ? <button onClick={() => { setIsAdmin(false); setMenuOpen(false); }} style={{ flex: 1, padding: "10px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 10, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 12, cursor: "pointer" }}>SIGN OUT</button>
-                : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ flex: 1, padding: "10px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 10, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🔐 SIGN IN</button>
+                ? <button onClick={() => { setIsAdmin(false); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>SIGN OUT</button>
+                : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>🔐 SIGN IN</button>
               }
             </div>
           </div>
