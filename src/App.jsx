@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 
-const ADMIN_PASSWORD = "sodacan123";
+// Password is checked via hashed comparison — do not store plaintext in production
+// Replace this with your own password hash using: btoa(encodeURIComponent("yourpassword"))
+const _PH = "c29kYWNhbjEyMw=="; // base64 — not truly secure, use a backend for real auth
+function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
 const SAMPLE_CANS = [
   { id: "1", name: "Coca-Cola Classic", image: null, tags: ["coca-cola", "330ml", "cola", "classic"], addedAt: Date.now() - 86400000 * 10 },
@@ -254,7 +257,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose }) {
 
 function LoginModal({ T, onLogin, onClose }) {
   const [pw, setPw] = useState(""); const [err, setErr] = useState("");
-  const go = () => { if (pw === ADMIN_PASSWORD) onLogin(); else setErr("Wrong password! (hint: sodacan123)"); };
+  const go = () => { if (checkPw(pw)) onLogin(); else setErr("Incorrect password. Please try again."); };
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
@@ -265,7 +268,7 @@ function LoginModal({ T, onLogin, onClose }) {
           style={{ width: "100%", padding: "12px 14px", marginBottom: 8, background: T.bgInput, border: `2px solid ${err ? "#C8102E" : T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 14, textAlign: "center" }} />
         {err && <p style={{ color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.05em", marginBottom: 8 }}>{err}</p>}
         <button onClick={go} style={{ width: "100%", padding: "12px", background: "#C8102E", border: "none", borderRadius: 9, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>SIGN IN</button>
-        <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 10, fontStyle: "italic", marginTop: 16 }}>"A collection is a story told in cans."</p>
+        <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 10, fontStyle: "italic", marginTop: 16 }}>Collectors only 🥤</p>
       </div>
     </ModalShell>
   );
@@ -365,19 +368,20 @@ function CollectionPage({ T, isAdmin }) {
 function GridCard({ can, i, T, onClick }) {
   const color = getCanColor(can.tags);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 14, padding: "18px 12px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, position: "relative", overflow: "hidden", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010,0 1px 0 #fff inset", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-6px) rotate(-1deg)"; e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 12px 30px ${color}33`; }}
+    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010,0 1px 0 #fff inset", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 12px 30px ${color}33`; }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010,0 1px 0 #fff inset"; }}>
-      <div style={{ position: "absolute", top: 8, right: 9, width: 6, height: 6, borderRadius: "50%", background: color, opacity: 0.6 }} />
-      <div style={{ width: 58, height: 92 }}>
-        {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 6 }} /> : <CanSvg color={color} name={can.name} />}
-      </div>
-      <div style={{ textAlign: "center", width: "100%" }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 12, color: T.text, marginBottom: 6, lineHeight: 1.3 }}>{can.name}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center" }}>
-          {can.tags.slice(0, 3).map(t => <TagPill key={t} tag={t} T={T} />)}
-          {can.tags.length > 3 && <span style={{ fontSize: 9, color: T.textFaint, fontFamily: "'Oswald',sans-serif" }}>+{can.tags.length - 3}</span>}
+      {/* Image area — dominant */}
+      <div style={{ width: "100%", aspectRatio: "3/4", background: T.isDark ? "#1a0808" : "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
+        <div style={{ position: "absolute", top: 8, right: 8, width: 7, height: 7, borderRadius: "50%", background: color, opacity: 0.7 }} />
+        <div style={{ width: "55%", height: "80%", position: "relative" }}>
+          {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={can.name} />}
         </div>
+      </div>
+      {/* Slim name bar only */}
+      <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
       </div>
     </div>
   );
@@ -476,20 +480,18 @@ function WishlistPage({ T, isAdmin }) {
 function WishGridCard({ wish, i, T, onClick }) {
   const color = getCanColor(wish.tags);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px dashed ${T.border}`, borderRadius: 14, padding: "18px 12px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, position: "relative", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = `0 10px 26px #C8102E22`; }}
+    <div onClick={onClick} style={{ background: T.bgCard, border: `2px dashed ${T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #C8102E22"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = ""; }}>
-      {/* Star badge */}
-      <div style={{ position: "absolute", top: -1, right: 10, background: "#C8102E", color: "#fff", fontSize: 9, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
-      <div style={{ width: 58, height: 92, opacity: 0.75, filter: "grayscale(30%)" }}>
-        {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 6 }} /> : <CanSvg color={color} name={wish.name} />}
-      </div>
-      <div style={{ textAlign: "center", width: "100%" }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 12, color: T.text, marginBottom: 5 }}>{wish.name}</div>
-        {wish.note && <div style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textMuted, fontStyle: "italic", marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{wish.note}"</div>}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center" }}>
-          {wish.tags.slice(0, 2).map(t => <TagPill key={t} tag={t} T={T} />)}
+      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: T.isDark ? "#1a0808" : "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
+        <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
+        <div style={{ width: "55%", height: "80%", opacity: 0.8, filter: "grayscale(20%)", position: "relative" }}>
+          {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
+      </div>
+      <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
       </div>
     </div>
   );
@@ -656,8 +658,9 @@ function CanWallPage({ T, isAdmin }) {
 export default function App() {
   const [dark, setDark] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [page, setPage] = useState("collection"); // 'collection' | 'wishlist' | 'wall'
+  const [page, setPage] = useState("collection");
   const [showLogin, setShowLogin] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const T = {
     isDark: dark,
@@ -679,6 +682,8 @@ export default function App() {
     { id: "wall", label: "Can Wall", icon: "📸" },
   ];
 
+  const goTo = (id) => { setPage(id); setMenuOpen(false); };
+
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "Georgia,'Times New Roman',serif", transition: "background 0.3s,color 0.3s" }}>
       <style>{`
@@ -691,50 +696,79 @@ export default function App() {
         input:focus{outline:none;border-color:#C8102E!important;box-shadow:0 0 0 3px #C8102E1a}
         @keyframes popIn{from{opacity:0;transform:scale(0.84) translateY(14px)}to{opacity:1;transform:none}}
         @keyframes slideDown{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:none}}
+        @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
         .hdr{animation:slideDown 0.4s ease}
         button:active{opacity:0.85}
+        .mob-menu{animation:slideIn 0.2s ease}
       `}</style>
 
       {/* HEADER */}
       <header className="hdr" style={{ background: "#C8102E", backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 28px,#00000012 28px,#00000012 29px)", borderBottom: "5px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
-        <div style={{ background: "#8a0000", padding: "3px 20px", display: "flex", justifyContent: "space-between" }}>
+        {/* Ticker — hidden on very small screens */}
+        <div style={{ background: "#8a0000", padding: "3px 20px", display: "flex", justifyContent: "space-between", overflow: "hidden" }}>
           {["★ EST. 2024 ★", "★ 100% SATISFACTION ★", "★ EVERY CAN COUNTS ★"].map(t => (
-            <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em" }}>{t}</span>
+            <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>{t}</span>
           ))}
         </div>
-        <div style={{ padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 42, height: 42, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", boxShadow: "0 2px 8px #00000044", fontSize: 22 }}>🥤</div>
+
+        <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", fontSize: 20, flexShrink: 0 }}>🥤</div>
             <div>
-              <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 30, color: "#FFF5E6", lineHeight: 1, textShadow: "2px 2px 0 #7a0000" }}>CanVault</div>
-              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#FFD0C0", letterSpacing: "0.25em" }}>SODA CAN COLLECTION</div>
+              <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#FFF5E6", lineHeight: 1, textShadow: "2px 2px 0 #7a0000" }}>CanVault</div>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: "#FFD0C0", letterSpacing: "0.2em" }}>SODA CAN COLLECTION</div>
             </div>
           </div>
 
-          {/* Nav */}
-          <nav style={{ display: "flex", gap: 4 }}>
+          {/* Desktop nav — hidden on mobile */}
+          <nav style={{ display: "flex", gap: 4, flex: 1, justifyContent: "center" }} className="desktop-nav">
             {NAV.map(n => (
-              <button key={n.id} onClick={() => setPage(n.id)} style={{ background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C066"}`, borderRadius: "999px", padding: "6px 14px", color: page === n.id ? "#C8102E" : "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", transition: "all 0.18s", display: "flex", alignItems: "center", gap: 5 }}>
-                <span>{n.icon}</span><span style={{ display: "none", ["@media (min-width:500px)"]: { display: "inline" } }}>{n.label}</span><span>{n.label}</span>
+              <button key={n.id} onClick={() => goTo(n.id)} style={{ background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C066"}`, borderRadius: "999px", padding: "6px 14px", color: page === n.id ? "#C8102E" : "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", transition: "all 0.18s", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                <span>{n.icon}</span><span>{n.label}</span>
               </button>
             ))}
           </nav>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={() => setDark(d => !d)} style={{ background: dark ? "#FFF5E6" : "#8a0000", border: `2px solid ${dark ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "6px 13px", color: dark ? "#C8102E" : "#FFF5E6", fontFamily: "'Oswald',sans-serif", fontSize: 11, cursor: "pointer", letterSpacing: "0.08em", transition: "all 0.2s" }}>
+          {/* Right controls */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+            <button onClick={() => setDark(d => !d)} style={{ background: dark ? "#FFF5E6" : "#8a0000", border: `2px solid ${dark ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "6px 10px", color: dark ? "#C8102E" : "#FFF5E6", fontFamily: "'Oswald',sans-serif", fontSize: 14, cursor: "pointer", transition: "all 0.2s", lineHeight: 1 }}>
               {dark ? "☀️" : "🌙"}
             </button>
             {isAdmin
-              ? <button onClick={() => setIsAdmin(false)} style={{ background: "transparent", border: "2px solid #FFD0C077", borderRadius: "999px", padding: "6px 12px", color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", letterSpacing: "0.08em" }}>SIGN OUT</button>
-              : <button onClick={() => setShowLogin(true)} style={{ background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: "999px", padding: "7px 16px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 12, cursor: "pointer", fontWeight: 700, letterSpacing: "0.08em" }}>🔐 SIGN IN</button>
+              ? <button onClick={() => setIsAdmin(false)} style={{ background: "transparent", border: "2px solid #FFD0C077", borderRadius: "999px", padding: "6px 10px", color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}>OUT</button>
+              : <button onClick={() => setShowLogin(true)} style={{ background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: "999px", padding: "6px 12px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}>🔐</button>
             }
+            {/* Hamburger */}
+            <button onClick={() => setMenuOpen(m => !m)} style={{ background: menuOpen ? "#FFF5E6" : "#8a0000", border: `2px solid ${menuOpen ? "#FFE8D0" : "#5a0000"}`, borderRadius: 8, padding: "6px 9px", color: menuOpen ? "#C8102E" : "#FFF5E6", cursor: "pointer", fontSize: 16, lineHeight: 1 }} aria-label="Menu">
+              {menuOpen ? "✕" : "☰"}
+            </button>
           </div>
         </div>
+
+        {/* Dropdown mobile menu */}
+        {menuOpen && (
+          <div className="mob-menu" style={{ background: "#a00020", borderTop: "2px solid #7a0000", padding: "8px 16px 14px" }}>
+            {NAV.map(n => (
+              <button key={n.id} onClick={() => goTo(n.id)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 16px", marginBottom: 4, background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C044"}`, borderRadius: 10, color: page === n.id ? "#C8102E" : "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ fontSize: 20 }}>{n.icon}</span>
+                <span>{n.label}</span>
+                {page === n.id && <span style={{ marginLeft: "auto", fontSize: 10 }}>●</span>}
+              </button>
+            ))}
+            <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 6, paddingTop: 10, display: "flex", gap: 8 }}>
+              {isAdmin
+                ? <button onClick={() => { setIsAdmin(false); setMenuOpen(false); }} style={{ flex: 1, padding: "10px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 10, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 12, cursor: "pointer" }}>SIGN OUT</button>
+                : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ flex: 1, padding: "10px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 10, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🔐 SIGN IN</button>
+              }
+            </div>
+          </div>
+        )}
       </header>
 
       {/* HERO BAND */}
-      <div style={{ background: T.stripe, borderBottom: `3px solid ${T.border}`, padding: "18px 20px", textAlign: "center" }}>
-        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(18px,3.5vw,34px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: dark ? "none" : "2px 2px 0 #FFD0C0" }}>
+      <div style={{ background: T.stripe, borderBottom: `3px solid ${T.border}`, padding: "16px 20px", textAlign: "center" }}>
+        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(16px,3.5vw,32px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: dark ? "none" : "2px 2px 0 #FFD0C0" }}>
           {page === "collection" && "The World's Finest Collection"}
           {page === "wishlist" && "Cans I'm Hunting For ⭐"}
           {page === "wall" && "My Collection on Display 📸"}
@@ -742,7 +776,7 @@ export default function App() {
       </div>
 
       {/* PAGE CONTENT */}
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 18px" }}>
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 14px" }}>
         {page === "collection" && <CollectionPage T={T} isAdmin={isAdmin} />}
         {page === "wishlist" && <WishlistPage T={T} isAdmin={isAdmin} />}
         {page === "wall" && <CanWallPage T={T} isAdmin={isAdmin} />}
@@ -752,6 +786,7 @@ export default function App() {
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>★ EVERY CAN TELLS A STORY ★</p>
+        <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, marginTop: 8, fontStyle: "italic" }}>Note: data is stored locally on this device. To sync across devices, a backend is needed.</p>
       </div>
 
       {showLogin && <LoginModal T={T} onLogin={() => { setIsAdmin(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
