@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import * as db from "./db.js";
 
+// Password is checked via hashed comparison — do not store plaintext in production
+// Replace this with your own password hash using: btoa(encodeURIComponent("yourpassword"))
 const _PH = "c29kYWNhbjEyMw=="; // base64 — not truly secure, use a backend for real auth
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
@@ -172,7 +174,6 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
 
   const handleFile = async f => {
     if (!f || !f.type.startsWith("image/")) return;
-    // Try Vercel Blob first; fall back to base64 if no API (local dev)
     setUploading(true); setUploadErr("");
     try {
       const res = await fetch("/api/upload", {
@@ -191,7 +192,6 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
         throw new Error("API not available");
       }
     } catch {
-      // Fallback: base64 (works locally, not shared across devices)
       const r = new FileReader(); r.onload = e => setImage(e.target.result); r.readAsDataURL(f);
       setUploadErr("⚠️ Saved locally only — Blob API not reachable");
     } finally {
@@ -669,8 +669,8 @@ function CanWallPage({ T, isAdmin }) {
     const photo = { id: Date.now().toString(), image: newImage, caption: newCaption.trim(), addedAt: Date.now() };
     if (db.isConfigured()) {
       await db.addWallPhoto(photo).catch(console.error);
-      const rows = await db.getWallPhotos().catch(() => null);
-      if (rows) setPhotos(rows.map(db.rowToPhoto));
+      // Optimistic update — don't refetch, just prepend
+      setPhotos(p => [photo, ...p]);
     } else {
       setPhotos(p => [photo, ...p]);
     }
@@ -737,17 +737,18 @@ function CanWallPage({ T, isAdmin }) {
         <ModalShell onClose={() => { setAddModal(false); setNewImage(null); setNewCaption(""); }} T={T}>
           <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Add Wall Photo</div>
           <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
-          <div onClick={() => fileRef.current.click()}
+          <div
             onDragOver={e => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)}
             onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
-            style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+            style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", overflow: "hidden" }}>
+            {/* Invisible full-area file input — works on iOS/Android */}
+            <input ref={fileRef} type="file" accept="image/*,image/heic,image/heif" style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", zIndex: 2 }} onChange={e => handleFile(e.target.files[0])} />
             {uploading
               ? <><span style={{ fontSize: 36, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>UPLOADING…</p></>
               : newImage
-                ? <img src={newImage} alt="preview" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
-                : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>DROP PHOTO OR CLICK TO UPLOAD</p><p style={{ color: T.textFaint, fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic" }}>Your shelf, your wall, your display</p></>}
+                ? <img src={newImage} alt="preview" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain", position: "relative", zIndex: 1 }} />
+                : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>TAP TO UPLOAD PHOTO</p><p style={{ color: T.textFaint, fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic" }}>Your shelf, your wall, your display</p></>}
           </div>
           {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 8 }}>{uploadErr}</p>}
           <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 5 }}>CAPTION (optional)</label>
@@ -825,7 +826,7 @@ export default function App() {
       {/* HEADER */}
       <header className="hdr" style={{ background: "#C8102E", backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 28px,#00000012 28px,#00000012 29px)", borderBottom: "5px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
         <div style={{ background: "#8a0000", padding: "3px 12px", display: "flex", justifyContent: "center", gap: 16, overflow: "hidden" }}>
-          {["★ EST. 2020 ★", "★ EVERY CAN COUNTS ★"].map(t => (
+          {["★ EST. 2024 ★", "★ EVERY CAN COUNTS ★"].map(t => (
             <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>{t}</span>
           ))}
         </div>
@@ -890,6 +891,7 @@ export default function App() {
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>★ EVERY CAN TELLS A STORY ★</p>
+        <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, marginTop: 8, fontStyle: "italic" }}>Note: data is stored locally on this device. To sync across devices, a backend is needed.</p>
       </div>
 
       {showLogin && <LoginModal T={T} onLogin={() => { setIsAdmin(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
