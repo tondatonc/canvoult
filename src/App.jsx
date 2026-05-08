@@ -825,7 +825,7 @@ export default function App() {
       {/* HEADER */}
       <header className="hdr" style={{ background: "#C8102E", backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 28px,#00000012 28px,#00000012 29px)", borderBottom: "5px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
         <div style={{ background: "#8a0000", padding: "3px 12px", display: "flex", justifyContent: "center", gap: 16, overflow: "hidden" }}>
-          {["★ EST. 2024 ★", "★ EVERY CAN COUNTS ★"].map(t => (
+          {["★ EST. 2020 ★", "★ EVERY CAN COUNTS ★"].map(t => (
             <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>{t}</span>
           ))}
         </div>
