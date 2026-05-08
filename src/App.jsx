@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import * as db from "./db.js";
 
-// Password is checked via hashed comparison — do not store plaintext in production
-// Replace this with your own password hash using: btoa(encodeURIComponent("yourpassword"))
 const _PH = "c29kYWNhbjEyMw=="; // base64 — not truly secure, use a backend for real auth
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
