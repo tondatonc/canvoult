@@ -892,7 +892,6 @@ export default function App() {
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>★ EVERY CAN TELLS A STORY ★</p>
-        <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, marginTop: 8, fontStyle: "italic" }}>Note: data is stored locally on this device. To sync across devices, a backend is needed.</p>
       </div>
 
       {showLogin && <LoginModal T={T} onLogin={() => { setIsAdmin(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
