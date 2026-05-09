@@ -188,11 +188,12 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
         const { url } = await res.json();
         setImage(url);
       } else {
-        throw new Error("API not available");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`${res.status}: ${err.error || "unknown"}`);
       }
-    } catch {
+    } catch (err) {
       const r = new FileReader(); r.onload = e => setImage(e.target.result); r.readAsDataURL(f);
-      setUploadErr("⚠️ Saved locally only — Blob API not reachable");
+      setUploadErr(`⚠️ Blob failed (${err.message}) — saved locally`);
     } finally {
       setUploading(false);
     }
@@ -205,20 +206,20 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
       </div>
       <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 20px", borderRadius: 2 }} />
 
-      {/* Image */}
-      <div onClick={() => fileRef.current.click()}
+      {/* Image — mobile-friendly: invisible input covers entire area */}
+      <div
         onDragOver={e => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
-        style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 14, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+        style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 14, textAlign: "center", cursor: "pointer", marginBottom: 6, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, position: "relative", overflow: "hidden", minHeight: 90 }}>
+        <input ref={fileRef} type="file" accept="image/*,image/heic,image/heif" style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", zIndex: 2 }} onChange={e => handleFile(e.target.files[0])} />
         {uploading
           ? <><span style={{ fontSize: 26, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>UPLOADING…</p></>
           : image
-            ? <img src={image} alt="preview" style={{ height: 80, borderRadius: 8, objectFit: "contain" }} />
-            : <><span style={{ fontSize: 26 }}>📸</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.1em" }}>DROP OR CLICK TO UPLOAD</p></>}
+            ? <img src={image} alt="preview" style={{ height: 80, borderRadius: 8, objectFit: "contain", position: "relative", zIndex: 1 }} />
+            : <><span style={{ fontSize: 26 }}>📸</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.1em" }}>TAP TO UPLOAD PHOTO</p></>}
       </div>
-      {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 8, letterSpacing: "0.05em" }}>{uploadErr}</p>}
+      {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 10, letterSpacing: "0.05em" }}>{uploadErr}</p>}
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>CAN NAME</label>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Fanta Orange 330ml"
@@ -656,10 +657,13 @@ function CanWallPage({ T, isAdmin }) {
       if (res.ok) {
         const { url } = await res.json();
         setNewImage(url);
-      } else { throw new Error(); }
-    } catch {
+      } else {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`${res.status}: ${err.error || "unknown"}`);
+      }
+    } catch (err) {
       const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(f);
-      setUploadErr("⚠️ Saved locally only — Blob API not reachable");
+      setUploadErr(`⚠️ Blob failed (${err.message}) — saved locally`);
     } finally { setUploading(false); }
   };
 
