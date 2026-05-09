@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
 
-const _PH = "c29kYWNhbjEyMw=="; // base64 — not truly secure, use a backend for real auth
+const _PH = "c29kYWNhbjEyMw==";
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
 const SAMPLE_CANS = [
@@ -776,9 +777,10 @@ function CanWallPage({ T, isAdmin }) {
 export default function App() {
   const [dark, setDark] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [page, setPage] = useState("collection");
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const T = {
     isDark: dark,
@@ -795,12 +797,17 @@ export default function App() {
   };
 
   const NAV = [
-    { id: "collection", label: "Collection", icon: "🥤" },
-    { id: "wishlist", label: "Wishlist", icon: "⭐" },
-    { id: "wall", label: "Can Wall", icon: "📸" },
+    { id: "collection", path: "/", label: "Collection", icon: "🥤", title: "The Collection" },
+    { id: "wishlist", path: "/wishlist", label: "Wishlist", icon: "⭐", title: "Wishlist" },
+    { id: "wall", path: "/canwall", label: "Can Wall", icon: "📸", title: "Can Wall" },
   ];
 
-  const goTo = (id) => { setPage(id); setMenuOpen(false); };
+  const currentNav = NAV.find(n => n.path === location.pathname) || NAV[0];
+
+  const goTo = (path) => {
+    navigate(path);
+    setMenuOpen(false);
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "Georgia,'Times New Roman',serif", transition: "background 0.3s,color 0.3s" }}>
@@ -853,10 +860,10 @@ export default function App() {
         {menuOpen && (
           <div className="mob-menu" style={{ background: "#a00020", borderTop: "2px solid #7a0000", padding: "10px 14px 16px" }}>
             {NAV.map(n => (
-              <button key={n.id} onClick={() => goTo(n.id)} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "13px 16px", marginBottom: 6, background: page === n.id ? "#FFF5E6" : "transparent", border: `2px solid ${page === n.id ? "#FFF5E6" : "#FFD0C033"}`, borderRadius: 11, color: page === n.id ? "#C8102E" : "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
+              <button key={n.path} onClick={() => goTo(n.path)} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "13px 16px", marginBottom: 6, background: currentNav.path === n.path ? "#FFF5E6" : "transparent", border: `2px solid ${currentNav.path === n.path ? "#FFF5E6" : "#FFD0C033"}`, borderRadius: 11, color: currentNav.path === n.path ? "#C8102E" : "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
                 <span style={{ fontSize: 22 }}>{n.icon}</span>
                 <span>{n.label}</span>
-                {page === n.id && <span style={{ marginLeft: "auto" }}>●</span>}
+                {currentNav.path === n.path && <span style={{ marginLeft: "auto" }}>●</span>}
               </button>
             ))}
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 12 }}>
@@ -869,26 +876,37 @@ export default function App() {
         )}
       </header>
 
-      {/* HERO BAND */}
-      <div style={{ background: T.stripe, borderBottom: `3px solid ${T.border}`, padding: "16px 20px", textAlign: "center" }}>
-        <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(16px,3.5vw,32px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: dark ? "none" : "2px 2px 0 #FFD0C0" }}>
-          {page === "collection" && "The World's Finest Collection"}
-          {page === "wishlist" && "Cans I'm Hunting For ⭐"}
-          {page === "wall" && "My Collection on Display 📸"}
-        </h2>
+      {/* HERO BAND — subpage header */}
+      <div style={{ background: T.stripe, borderBottom: `3px solid ${T.border}`, padding: "14px 20px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.15em", cursor: "pointer" }} onClick={() => goTo("/")}>CANVAULT</span>
+          {location.pathname !== "/" && <>
+            <span style={{ color: T.textFaint, fontSize: 12 }}>›</span>
+            <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>{currentNav?.label.toUpperCase()}</span>
+          </>}
+        </div>
+        <div style={{ maxWidth: 1100, margin: "4px auto 0" }}>
+          <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(22px,4vw,38px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: dark ? "none" : "2px 2px 0 #FFD0C0", lineHeight: 1.1 }}>
+            {currentNav?.icon} {currentNav?.title}
+          </h1>
+        </div>
       </div>
 
       {/* PAGE CONTENT */}
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 14px" }}>
-        {page === "collection" && <CollectionPage T={T} isAdmin={isAdmin} />}
-        {page === "wishlist" && <WishlistPage T={T} isAdmin={isAdmin} />}
-        {page === "wall" && <CanWallPage T={T} isAdmin={isAdmin} />}
+        <Routes>
+          <Route path="/" element={<CollectionPage T={T} isAdmin={isAdmin} />} />
+          <Route path="/wishlist" element={<WishlistPage T={T} isAdmin={isAdmin} />} />
+          <Route path="/canwall" element={<CanWallPage T={T} isAdmin={isAdmin} />} />
+          <Route path="*" element={<CollectionPage T={T} isAdmin={isAdmin} />} />
+        </Routes>
       </main>
 
       {/* Footer */}
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>★ EVERY CAN TELLS A STORY ★</p>
+        <a href="mailto:tondatonc@gmail.com" style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textMuted, marginTop: 10, display: "inline-block", textDecoration: "none", fontStyle: "italic" }}>tondatonc@gmail.com</a>
       </div>
 
       {showLogin && <LoginModal T={T} onLogin={() => { setIsAdmin(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
