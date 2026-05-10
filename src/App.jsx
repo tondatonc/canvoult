@@ -21,7 +21,7 @@ const SAMPLE_WISHLIST = [
 const BRAND_COLORS = {
   "coca-cola": "#C8102E", fanta: "#FF6B00", sprite: "#00843D",
   pepsi: "#004B93", "7up": "#00A651", "mountain-dew": "#97D700",
-  "dr-pepper": "#7B1818", default: "#C8102E",
+  "dr-pepper": "#7B1818", "red-bull": "#C8A900", default: "#C8102E",
 };
 
 function getCanColor(tags = []) {
@@ -481,6 +481,7 @@ function WishlistPage({ T, isAdmin }) {
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("newest");
   const [viewMode, setViewMode] = useState("grid");
+  const [activeTags, setActiveTags] = useState([]);
   const [modal, setModal] = useState(null);
 
   useEffect(() => {
@@ -489,7 +490,10 @@ function WishlistPage({ T, isAdmin }) {
       .catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
   }, []);
 
-  const sorted = sortCans(wishes, sort);
+  const allTags = [...new Set(wishes.flatMap(w => w.tags))].sort();
+  const sorted = sortCans(wishes.filter(w =>
+    activeTags.length === 0 || activeTags.every(t => w.tags.includes(t))
+  ), sort);
 
   const saveWish = async w => {
     if (db.isConfigured()) {
@@ -519,6 +523,16 @@ function WishlistPage({ T, isAdmin }) {
 
       {loading ? <LoadingSpinner T={T} /> : <>
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} />
+
+      {allTags.length > 0 && (
+        <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>FILTER BY TAG</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>clear</span>}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}` }}>
         <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>{wishes.length} ITEMS ON WISHLIST</span>
