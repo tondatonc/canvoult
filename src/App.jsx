@@ -707,18 +707,23 @@ function CanWallPage({ T, isAdmin }) {
   const [uploadErr, setUploadErr] = useState("");
 
   const handleFile = async f => {
-    if (!f || !f.type.startsWith("image/")) return;
+    if (!f) return;
+    const isImage = f.type.startsWith("image/") || f.name.match(/\.(heic|heif)$/i);
+    if (!isImage) return;
     setUploading(true); setUploadErr("");
     try {
-      const compressed = await compressImage(f, 3, 2560); // wall photos: slightly higher limit, higher res
+      // HEIC/HEIF can't be drawn on canvas — send as-is and let Blob handle it
+      const toUpload = f.type === "image/heic" || f.type === "image/heif" || f.type === ""
+        ? f
+        : await compressImage(f, 3, 2560);
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
-          "Content-Type": "image/jpeg",
+          "Content-Type": toUpload.type || "image/jpeg",
           "x-filename": `wall-${Date.now()}.jpg`,
           "x-canvault-auth": atob(_PH),
         },
-        body: compressed,
+        body: toUpload,
       });
       if (res.ok) {
         const { url } = await res.json();
