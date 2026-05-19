@@ -32,7 +32,39 @@ function getCanColor(tags = []) {
   return BRAND_COLORS.default;
 }
 
-function CanSvg({ color, name }) {
+// Compresses image to under 2MB before upload using canvas
+async function compressImage(file, maxSizeMB = 2, maxPx = 1920) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      // Scale down if too large
+      if (width > maxPx || height > maxPx) {
+        const ratio = Math.min(maxPx / width, maxPx / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      // Try quality 0.85 first, then lower if still too big
+      const tryQuality = (q) => {
+        canvas.toBlob(blob => {
+          if (blob.size > maxSizeMB * 1024 * 1024 && q > 0.3) {
+            tryQuality(Math.round((q - 0.1) * 10) / 10);
+          } else {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+          }
+        }, "image/jpeg", q);
+      };
+      tryQuality(0.85);
+    };
+    img.onerror = () => resolve(file); // fallback: use original
+    img.src = url;
+  });
+}
   const initials = name.split(" ").map(w => w[0]).join("").slice(0, 3).toUpperCase();
   const uid = color.replace("#", "");
   return (
@@ -175,14 +207,15 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
     if (!f || !f.type.startsWith("image/")) return;
     setUploading(true); setUploadErr("");
     try {
+      const compressed = await compressImage(f);
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
-          "Content-Type": f.type,
-          "x-filename": `can-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, "_")}`,
+          "Content-Type": "image/jpeg",
+          "x-filename": `can-${Date.now()}.jpg`,
           "x-canvault-auth": atob(_PH),
         },
-        body: f,
+        body: compressed,
       });
       if (res.ok) {
         const { url } = await res.json();
@@ -305,6 +338,18 @@ function LoginModal({ T, onLogin, onClose }) {
   );
 }
 
+// Deletes a file from Vercel Blob via the API route
+async function deleteFromBlob(url) {
+  if (!url || !url.includes("blob.vercel")) return;
+  try {
+    await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-canvault-auth": atob(_PH) },
+      body: JSON.stringify({ url }),
+    });
+  } catch (e) { console.error("Blob delete failed", e); }
+}
+
 // ─── LOADING SPINNER ──────────────────────────────────────────────────────────
 
 function LoadingSpinner({ T }) {
@@ -352,7 +397,9 @@ function CollectionPage({ T, isAdmin }) {
   };
 
   const removeCan = async id => {
+    const can = cans.find(c => c.id === id);
     if (db.isConfigured()) await db.deleteCan(id).catch(console.error);
+    if (can?.image && can.image.includes("blob.vercel")) await deleteFromBlob(can.image);
     setCans(p => p.filter(c => c.id !== id));
   };
 
@@ -507,7 +554,9 @@ function WishlistPage({ T, isAdmin }) {
   };
 
   const removeWish = async id => {
+    const wish = wishes.find(w => w.id === id);
     if (db.isConfigured()) await db.deleteWish(id).catch(console.error);
+    if (wish?.image && wish.image.includes("blob.vercel")) await deleteFromBlob(wish.image);
     setWishes(p => p.filter(w => w.id !== id));
   };
 
@@ -659,14 +708,15 @@ function CanWallPage({ T, isAdmin }) {
     if (!f || !f.type.startsWith("image/")) return;
     setUploading(true); setUploadErr("");
     try {
+      const compressed = await compressImage(f, 3, 2560); // wall photos: slightly higher limit, higher res
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
-          "Content-Type": f.type,
-          "x-filename": `wall-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, "_")}`,
+          "Content-Type": "image/jpeg",
+          "x-filename": `wall-${Date.now()}.jpg`,
           "x-canvault-auth": atob(_PH),
         },
-        body: f,
+        body: compressed,
       });
       if (res.ok) {
         const { url } = await res.json();
@@ -695,7 +745,9 @@ function CanWallPage({ T, isAdmin }) {
   };
 
   const removePhoto = async id => {
+    const photo = photos.find(p => p.id === id);
     if (db.isConfigured()) await db.deleteWallPhoto(id).catch(console.error);
+    if (photo?.image && photo.image.includes("blob.vercel")) await deleteFromBlob(photo.image);
     setPhotos(p => p.filter(x => x.id !== id));
   };
 
