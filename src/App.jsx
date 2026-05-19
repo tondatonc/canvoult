@@ -65,6 +65,8 @@ async function compressImage(file, maxSizeMB = 2, maxPx = 1920) {
     img.src = url;
   });
 }
+
+function CanSvg({ color, name }) {
   const initials = name.split(" ").map(w => w[0]).join("").slice(0, 3).toUpperCase();
   const uid = color.replace("#", "");
   return (
