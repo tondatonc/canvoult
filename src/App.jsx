@@ -544,14 +544,15 @@ function LoginModal({ T, onLogin, onClose }) {
 
 // Deletes a file from Vercel Blob via the API route
 async function deleteFromBlob(url) {
-  if (!url || !url.includes("blob.vercel")) return;
+  if (!url || !url.startsWith("http") || url.startsWith("data:")) return;
   try {
-    await fetch("/api/delete", {
+    const res = await fetch("/api/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-canvault-auth": atob(_PH) },
       body: JSON.stringify({ url }),
     });
-  } catch (e) { console.error("Blob delete failed", e); }
+    if (!res.ok) console.error("Blob delete failed:", await res.text());
+  } catch (e) { console.error("Blob delete error:", e); }
 }
 
 // ─── LOADING SPINNER ──────────────────────────────────────────────────────────
@@ -603,7 +604,7 @@ function CollectionPage({ T, isAdmin }) {
   const removeCan = async id => {
     const can = cans.find(c => c.id === id);
     if (db.isConfigured()) await db.deleteCan(id).catch(console.error);
-    if (can?.image && can.image.includes("blob.vercel")) await deleteFromBlob(can.image);
+    if (can?.image && can.image.startsWith("http")) await deleteFromBlob(can.image);
     setCans(p => p.filter(c => c.id !== id));
   };
 
@@ -760,7 +761,7 @@ function WishlistPage({ T, isAdmin }) {
   const removeWish = async id => {
     const wish = wishes.find(w => w.id === id);
     if (db.isConfigured()) await db.deleteWish(id).catch(console.error);
-    if (wish?.image && wish.image.includes("blob.vercel")) await deleteFromBlob(wish.image);
+    if (wish?.image && wish.image.startsWith("http")) await deleteFromBlob(wish.image);
     setWishes(p => p.filter(w => w.id !== id));
   };
 
@@ -959,7 +960,7 @@ function CanWallPage({ T, isAdmin }) {
   const removePhoto = async id => {
     const photo = photos.find(p => p.id === id);
     if (db.isConfigured()) await db.deleteWallPhoto(id).catch(console.error);
-    if (photo?.image && photo.image.includes("blob.vercel")) await deleteFromBlob(photo.image);
+    if (photo?.image && photo.image.startsWith("http")) await deleteFromBlob(photo.image);
     setPhotos(p => p.filter(x => x.id !== id));
   };
 
