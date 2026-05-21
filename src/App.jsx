@@ -32,38 +32,221 @@ function getCanColor(tags = []) {
   return BRAND_COLORS.default;
 }
 
-// Compresses image to under 2MB before upload using canvas
-async function compressImage(file, maxSizeMB = 2, maxPx = 1920) {
-  return new Promise((resolve) => {
+// Compress can photos to ~150KB (small grid thumbnails)
+async function compressCanPhoto(file) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      // Scale to max 900px — enough for grid display
+      let { width, height } = img;
+      const maxPx = 900;
+      if (width > maxPx || height > maxPx) {
+        const r = Math.min(maxPx / width, maxPx / height);
+        width = Math.round(width * r); height = Math.round(height * r);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      const target = 150 * 1024; // 150 KB
+      const tryQ = (q) => {
+        canvas.toBlob(blob => {
+          if (blob.size > target && q > 0.2) tryQ(Math.round((q - 0.05) * 100) / 100);
+          else resolve(new File([blob], "can.jpg", { type: "image/jpeg" }));
+        }, "image/jpeg", q);
+      };
+      tryQ(0.82);
+    };
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+}
+
+// Compress wall photos to just under 4MB Vercel limit, max quality
+async function compressWallPhoto(file) {
+  return new Promise(resolve => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
       let { width, height } = img;
-      // Scale down if too large
+      const maxPx = 3840; // 4K max
       if (width > maxPx || height > maxPx) {
-        const ratio = Math.min(maxPx / width, maxPx / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
+        const r = Math.min(maxPx / width, maxPx / height);
+        width = Math.round(width * r); height = Math.round(height * r);
       }
       const canvas = document.createElement("canvas");
       canvas.width = width; canvas.height = height;
       canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      // Try quality 0.85 first, then lower if still too big
-      const tryQuality = (q) => {
+      const target = 3.8 * 1024 * 1024; // 3.8 MB — just under 4MB limit
+      const tryQ = (q) => {
         canvas.toBlob(blob => {
-          if (blob.size > maxSizeMB * 1024 * 1024 && q > 0.3) {
-            tryQuality(Math.round((q - 0.1) * 10) / 10);
-          } else {
-            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
-          }
+          if (blob.size > target && q > 0.4) tryQ(Math.round((q - 0.05) * 100) / 100);
+          else resolve(new File([blob], "wall.jpg", { type: "image/jpeg" }));
         }, "image/jpeg", q);
       };
-      tryQuality(0.85);
+      tryQ(0.96); // start very high quality
     };
-    img.onerror = () => resolve(file); // fallback: use original
+    img.onerror = () => resolve(file);
     img.src = url;
   });
+}
+
+// ─── CROP MODAL ──────────────────────────────────────────────────────────────
+
+function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }) {
+  const imgRef = useRef();
+  const [dragging, setDragging] = useState(false);
+  const [box, setBox] = useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+  const [sizeInfo, setSizeInfo] = useState({ px: "", kb: "…" });
+  const [estimating, setEstimating] = useState(false);
+  const startRef = useRef();
+  const estimateTimer = useRef();
+
+  const getXY = (e, rect) => {
+    const s = e.touches ? e.touches[0] : e;
+    return { x: (s.clientX - rect.left) / rect.width, y: (s.clientY - rect.top) / rect.height };
+  };
+
+  const onDown = (e, mode) => {
+    e.preventDefault(); e.stopPropagation();
+    const rect = e.currentTarget.closest(".crop-area").getBoundingClientRect();
+    startRef.current = { pt: getXY(e, rect), box: { ...box }, mode };
+    if (mode === "drag") setDragging(true);
+  };
+
+  const onMove = (e) => {
+    if (!startRef.current) return;
+    e.preventDefault();
+    const rect = document.querySelector(".crop-area").getBoundingClientRect();
+    const pt = getXY(e, rect);
+    const dx = pt.x - startRef.current.pt.x;
+    const dy = pt.y - startRef.current.pt.y;
+    const ob = startRef.current.box;
+    const { mode } = startRef.current;
+    let nb = { ...ob };
+    if (mode === "drag") {
+      nb.x = Math.max(0, Math.min(1 - ob.w, ob.x + dx));
+      nb.y = Math.max(0, Math.min(1 - ob.h, ob.y + dy));
+    } else {
+      if (mode.includes("e")) nb.w = Math.max(0.05, Math.min(1 - ob.x, ob.w + dx));
+      if (mode.includes("s")) nb.h = Math.max(0.05, Math.min(1 - ob.y, ob.h + dy));
+      if (mode.includes("w")) { nb.x = Math.max(0, ob.x + dx); nb.w = Math.max(0.05, ob.w - dx); }
+      if (mode.includes("n")) { nb.y = Math.max(0, ob.y + dy); nb.h = Math.max(0.05, ob.h - dy); }
+    }
+    setBox(nb);
+  };
+
+  const onUp = () => { setDragging(false); startRef.current = null; };
+
+  // Live size estimation — debounced so it doesn't lag while dragging
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth) return;
+    const pw = Math.round(img.naturalWidth * box.w);
+    const ph = Math.round(img.naturalHeight * box.h);
+    setSizeInfo(s => ({ ...s, px: `${pw} × ${ph} px` }));
+    setEstimating(true);
+    clearTimeout(estimateTimer.current);
+    estimateTimer.current = setTimeout(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = pw; canvas.height = ph;
+      canvas.getContext("2d").drawImage(img,
+        Math.round(img.naturalWidth * box.x), Math.round(img.naturalHeight * box.y),
+        pw, ph, 0, 0, pw, ph);
+      canvas.toBlob(blob => {
+        setSizeInfo({ px: `${pw} × ${ph} px`, kb: `${(blob.size / 1024).toFixed(0)} KB` });
+        setEstimating(false);
+      }, "image/jpeg", quality);
+    }, 300);
+    return () => clearTimeout(estimateTimer.current);
+  }, [box, quality]);
+
+  const doCrop = () => {
+    const img = imgRef.current;
+    const cw = Math.round(img.naturalWidth * box.w);
+    const ch = Math.round(img.naturalHeight * box.h);
+    const canvas = document.createElement("canvas");
+    canvas.width = cw; canvas.height = ch;
+    canvas.getContext("2d").drawImage(img,
+      Math.round(img.naturalWidth * box.x), Math.round(img.naturalHeight * box.y),
+      cw, ch, 0, 0, cw, ch);
+    canvas.toBlob(blob => onCrop(new File([blob], "cropped.jpg", { type: "image/jpeg" })), "image/jpeg", quality);
+  };
+
+  const handles = [
+    { id: "nw", style: { top: -7, left: -7, cursor: "nw-resize" } },
+    { id: "ne", style: { top: -7, right: -7, cursor: "ne-resize" } },
+    { id: "sw", style: { bottom: -7, left: -7, cursor: "sw-resize" } },
+    { id: "se", style: { bottom: -7, right: -7, cursor: "se-resize" } },
+    { id: "n",  style: { top: -7, left: "50%", transform: "translateX(-50%)", cursor: "n-resize" } },
+    { id: "s",  style: { bottom: -7, left: "50%", transform: "translateX(-50%)", cursor: "s-resize" } },
+    { id: "w",  style: { left: -7, top: "50%", transform: "translateY(-50%)", cursor: "w-resize" } },
+    { id: "e",  style: { right: -7, top: "50%", transform: "translateY(-50%)", cursor: "e-resize" } },
+  ];
+
+  const kbNum = parseInt(sizeInfo.kb);
+  const sizeColor = targetKB
+    ? kbNum > targetKB ? "#FF4444" : kbNum > targetKB * 0.8 ? "#FF9900" : "#22C55E"
+    : "#22C55E";
+
+  return (
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 300, background: "#000000ee", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 12 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: T.bgCard, border: `3px solid ${T.border}`, borderRadius: 16, padding: 14, width: "100%", maxWidth: 600, maxHeight: "95vh", display: "flex", flexDirection: "column", gap: 10, animation: "popIn 0.2s ease" }}>
+
+        {/* Header with live size */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>DRAG · RESIZE · CROP</p>
+          <div style={{ display: "flex", align: "center", gap: 8, alignItems: "center" }}>
+            <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.1em" }}>{sizeInfo.px}</span>
+            <div style={{ background: estimating ? T.border : sizeColor + "22", border: `1.5px solid ${estimating ? T.border : sizeColor}`, borderRadius: 6, padding: "3px 10px", minWidth: 70, textAlign: "center", transition: "all 0.3s" }}>
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, color: estimating ? T.textFaint : sizeColor, letterSpacing: "0.1em" }}>
+                {estimating ? "…" : sizeInfo.kb}
+              </span>
+            </div>
+            {targetKB && !estimating && kbNum > targetKB && (
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#FF4444", letterSpacing: "0.05em" }}>OVER LIMIT</span>
+            )}
+          </div>
+        </div>
+
+        {/* Crop area */}
+        <div className="crop-area" style={{ position: "relative", width: "100%", touchAction: "none", userSelect: "none", borderRadius: 8, overflow: "hidden" }}
+          onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+          onTouchMove={onMove} onTouchEnd={onUp}>
+          <img ref={imgRef} src={src} alt="crop" style={{ width: "100%", display: "block" }}
+            onLoad={() => {
+              // Trigger first size estimate once image loads
+              setBox(b => ({ ...b }));
+            }} />
+          {/* Dark overlay */}
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: `${box.y * 100}%`, background: "#00000077" }} />
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${(1 - box.y - box.h) * 100}%`, background: "#00000077" }} />
+            <div style={{ position: "absolute", top: `${box.y * 100}%`, left: 0, width: `${box.x * 100}%`, height: `${box.h * 100}%`, background: "#00000077" }} />
+            <div style={{ position: "absolute", top: `${box.y * 100}%`, right: 0, width: `${(1 - box.x - box.w) * 100}%`, height: `${box.h * 100}%`, background: "#00000077" }} />
+          </div>
+          {/* Crop box */}
+          <div onMouseDown={e => onDown(e, "drag")} onTouchStart={e => onDown(e, "drag")}
+            style={{ position: "absolute", left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, border: "2px solid #C8102E", boxSizing: "border-box", cursor: dragging ? "grabbing" : "grab" }}>
+            {[33.3, 66.6].map(p => <div key={`v${p}`} style={{ position: "absolute", left: `${p}%`, top: 0, bottom: 0, width: 1, background: "#ffffff33" }} />)}
+            {[33.3, 66.6].map(p => <div key={`h${p}`} style={{ position: "absolute", top: `${p}%`, left: 0, right: 0, height: 1, background: "#ffffff33" }} />)}
+            {handles.map(h => (
+              <div key={h.id} onMouseDown={e => onDown(e, h.id)} onTouchStart={e => onDown(e, h.id)}
+                style={{ position: "absolute", width: 14, height: 14, background: "#C8102E", border: "2px solid #fff", borderRadius: 3, zIndex: 10, ...h.style }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: "11px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 10, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 12, letterSpacing: "0.1em", cursor: "pointer" }}>CANCEL</button>
+          <button onClick={doCrop} style={{ flex: 2, padding: "11px", background: "#C8102E", border: "none", borderRadius: 10, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer", boxShadow: "0 4px 14px #C8102E44" }}>✓ CROP & USE</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CanSvg({ color, name }) {
@@ -195,6 +378,10 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
   const [image, setImage] = useState(initial.image || null);
   const [note, setNote] = useState(initial.note || "");
   const [drag, setDrag] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+  const [cropSrc, setCropSrc] = useState(null); // raw src for cropper
+  const [pendingFile, setPendingFile] = useState(null); // file before crop
   const fileRef = useRef();
 
   const addTag = () => {
@@ -202,14 +389,21 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
     if (t && !tags.includes(t)) setTags([...tags, t]);
     setTagInput("");
   };
-  const [uploading, setUploading] = useState(false);
-  const [uploadErr, setUploadErr] = useState("");
 
-  const handleFile = async f => {
+  const handleFile = (f) => {
     if (!f || !f.type.startsWith("image/")) return;
+    // Show cropper first
+    const url = URL.createObjectURL(f);
+    setPendingFile(f);
+    setCropSrc(url);
+  };
+
+  const handleCropped = async (croppedFile) => {
+    setCropSrc(null);
+    setPendingFile(null);
     setUploading(true); setUploadErr("");
     try {
-      const compressed = await compressImage(f);
+      const compressed = await compressCanPhoto(croppedFile);
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
@@ -227,7 +421,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
         throw new Error(`${res.status}: ${err.error || "unknown"}`);
       }
     } catch (err) {
-      const r = new FileReader(); r.onload = e => setImage(e.target.result); r.readAsDataURL(f);
+      const r = new FileReader(); r.onload = e => setImage(e.target.result); r.readAsDataURL(croppedFile);
       setUploadErr(`⚠️ Blob failed (${err.message}) — saved locally`);
     } finally {
       setUploading(false);
@@ -235,6 +429,8 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
   };
 
   return (
+    <>
+    {cropSrc && <CropModal src={cropSrc} T={T} quality={0.85} targetKB={150} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingFile(null); URL.revokeObjectURL(cropSrc); }} />}
     <ModalShell onClose={onClose} T={T}>
       <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>
         {initial.id ? "Edit" : "Add a Can"}
@@ -254,6 +450,11 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
             ? <img src={image} alt="preview" style={{ height: 80, borderRadius: 8, objectFit: "contain", position: "relative", zIndex: 1 }} />
             : <><span style={{ fontSize: 26 }}>📸</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.1em" }}>TAP TO UPLOAD PHOTO</p></>}
       </div>
+      {image && !uploading && (
+        <button onClick={() => fileRef.current.click()} style={{ width: "100%", marginBottom: 10, padding: "6px", background: "transparent", border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>
+          ✂️ CHANGE & RE-CROP
+        </button>
+      )}
       {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 10, letterSpacing: "0.05em" }}>{uploadErr}</p>}
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>CAN NAME</label>
@@ -284,6 +485,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [] }) {
         {initial.id ? "SAVE CHANGES" : "ADD TO VAULT"}
       </button>
     </ModalShell>
+    </>
   );
 }
 
@@ -705,25 +907,28 @@ function CanWallPage({ T, isAdmin }) {
 
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
+  const [cropSrc, setCropSrc] = useState(null);
 
-  const handleFile = async f => {
+  const handleFile = (f) => {
     if (!f) return;
-    const isImage = f.type.startsWith("image/") || f.name.match(/\.(heic|heif)$/i);
+    const isImage = f.type.startsWith("image/") || f.name?.match(/\.(heic|heif)$/i);
     if (!isImage) return;
+    const url = URL.createObjectURL(f);
+    setCropSrc(url);
+  };
+
+  const handleCropped = async (croppedFile) => {
+    setCropSrc(null);
     setUploading(true); setUploadErr("");
     try {
-      // HEIC/HEIF can't be drawn on canvas — send as-is and let Blob handle it
-      const toUpload = f.type === "image/heic" || f.type === "image/heif" || f.type === ""
-        ? f
-        : await compressImage(f, 3, 2560);
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
-          "Content-Type": toUpload.type || "image/jpeg",
+          "Content-Type": "image/jpeg",
           "x-filename": `wall-${Date.now()}.jpg`,
           "x-canvault-auth": atob(_PH),
         },
-        body: toUpload,
+        body: croppedFile,
       });
       if (res.ok) {
         const { url } = await res.json();
@@ -733,7 +938,7 @@ function CanWallPage({ T, isAdmin }) {
         throw new Error(`${res.status}: ${err.error || "unknown"}`);
       }
     } catch (err) {
-      const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(f);
+      const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(croppedFile);
       setUploadErr(`⚠️ Blob failed (${err.message}) — saved locally`);
     } finally { setUploading(false); }
   };
@@ -808,6 +1013,9 @@ function CanWallPage({ T, isAdmin }) {
         </div>
       )}
 
+      {/* Crop modal for wall photos — no compression, just crop at max quality */}
+      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.97} targetKB={3900} onCrop={handleCropped} onCancel={() => { setCropSrc(null); URL.revokeObjectURL(cropSrc); }} />}
+
       {/* Add photo modal */}
       {addModal && (
         <ModalShell onClose={() => { setAddModal(false); setNewImage(null); setNewCaption(""); }} T={T}>
@@ -818,7 +1026,6 @@ function CanWallPage({ T, isAdmin }) {
             onDragLeave={() => setDrag(false)}
             onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
             style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", overflow: "hidden" }}>
-            {/* Invisible full-area file input — works on iOS/Android */}
             <input ref={fileRef} type="file" accept="image/*,image/heic,image/heif" style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", zIndex: 2 }} onChange={e => handleFile(e.target.files[0])} />
             {uploading
               ? <><span style={{ fontSize: 36, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>UPLOADING…</p></>
@@ -826,6 +1033,9 @@ function CanWallPage({ T, isAdmin }) {
                 ? <img src={newImage} alt="preview" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain", position: "relative", zIndex: 1 }} />
                 : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>TAP TO UPLOAD PHOTO</p><p style={{ color: T.textFaint, fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic" }}>Your shelf, your wall, your display</p></>}
           </div>
+          {newImage && !uploading && (
+            <button onClick={() => { setNewImage(null); fileRef.current.click(); }} style={{ width: "100%", marginBottom: 10, padding: "6px", background: "transparent", border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>✂️ CHANGE & RE-CROP</button>
+          )}
           {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 8 }}>{uploadErr}</p>}
           <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 5 }}>CAPTION (optional)</label>
           <input value={newCaption} onChange={e => setNewCaption(e.target.value)} placeholder="e.g. My bedroom shelf, Jan 2025"
