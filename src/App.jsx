@@ -176,15 +176,77 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
   };
 
   const handles = [
-    { id: "nw", style: { top: -7, left: -7, cursor: "nw-resize" } },
-    { id: "ne", style: { top: -7, right: -7, cursor: "ne-resize" } },
-    { id: "sw", style: { bottom: -7, left: -7, cursor: "sw-resize" } },
-    { id: "se", style: { bottom: -7, right: -7, cursor: "se-resize" } },
-    { id: "n",  style: { top: -7, left: "50%", transform: "translateX(-50%)", cursor: "n-resize" } },
-    { id: "s",  style: { bottom: -7, left: "50%", transform: "translateX(-50%)", cursor: "s-resize" } },
-    { id: "w",  style: { left: -7, top: "50%", transform: "translateY(-50%)", cursor: "w-resize" } },
-    { id: "e",  style: { right: -7, top: "50%", transform: "translateY(-50%)", cursor: "e-resize" } },
+    { id: "nw", style: { top: -18, left: -18, cursor: "nw-resize" } },
+    { id: "ne", style: { top: -18, right: -18, cursor: "ne-resize" } },
+    { id: "sw", style: { bottom: -18, left: -18, cursor: "sw-resize" } },
+    { id: "se", style: { bottom: -18, right: -18, cursor: "se-resize" } },
+    { id: "n",  style: { top: -18, left: "50%", transform: "translateX(-50%)", cursor: "n-resize" } },
+    { id: "s",  style: { bottom: -18, left: "50%", transform: "translateX(-50%)", cursor: "s-resize" } },
+    { id: "w",  style: { left: -18, top: "50%", transform: "translateY(-50%)", cursor: "w-resize" } },
+    { id: "e",  style: { right: -18, top: "50%", transform: "translateY(-50%)", cursor: "e-resize" } },
   ];
+
+  const RATIOS = [
+    { label: "Free",            w: null,  h: null },
+    { label: "330ml",           w: 66,    h: 122  },  // standard 330ml (Coke, Fanta, Sprite...)
+    { label: "330ml Sleek",     w: 57,    h: 156  },  // slim/sleek 330ml
+    { label: "250ml",           w: 53,    h: 135  },  // Red Bull, slim 250ml
+    { label: "500ml",           w: 66,    h: 168  },  // standard 500ml (Monster, large cans)
+    { label: "500ml Sleek",     w: 57,    h: 190  },  // slim 500ml
+    { label: "1:1 Square",      w: 1,     h: 1    },  // square
+  ];
+  const [ratio, setRatio] = useState(null);
+
+  const applyRatio = (r) => {
+    setRatio(r);
+    if (!r.w) return;
+    const img = imgRef.current;
+    if (!img) return;
+    const imgAspect = img.naturalWidth / img.naturalHeight;
+    const targetAspect = r.w / r.h;
+    let w, h;
+    if (targetAspect > imgAspect) { w = 0.9; h = (w * img.naturalWidth / targetAspect) / img.naturalHeight; }
+    else { h = 0.9; w = (h * img.naturalHeight * targetAspect) / img.naturalWidth; }
+    const x = (1 - w) / 2, y = (1 - h) / 2;
+    setBox({ x, y, w, h });
+  };
+
+  // Lock ratio while resizing
+  const onMoveWithRatio = (e) => {
+    if (!startRef.current) return;
+    e.preventDefault();
+    const rect = document.querySelector(".crop-area").getBoundingClientRect();
+    const pt = getXY(e, rect);
+    const dx = pt.x - startRef.current.pt.x;
+    const dy = pt.y - startRef.current.pt.y;
+    const ob = startRef.current.box;
+    const { mode } = startRef.current;
+    let nb = { ...ob };
+    if (mode === "drag") {
+      nb.x = Math.max(0, Math.min(1 - ob.w, ob.x + dx));
+      nb.y = Math.max(0, Math.min(1 - ob.h, ob.y + dy));
+    } else if (ratio?.w) {
+      const img = imgRef.current;
+      const imgAspect = img.naturalWidth / img.naturalHeight;
+      const targetAspect = ratio.w / ratio.h;
+      const scaledAspect = targetAspect / imgAspect;
+      if (mode.includes("e") || mode.includes("w")) {
+        if (mode.includes("e")) nb.w = Math.max(0.05, Math.min(1 - ob.x, ob.w + dx));
+        if (mode.includes("w")) { nb.x = Math.max(0, ob.x + dx); nb.w = Math.max(0.05, ob.w - dx); }
+        nb.h = nb.w / scaledAspect;
+      } else {
+        if (mode.includes("s")) nb.h = Math.max(0.05, Math.min(1 - ob.y, ob.h + dy));
+        if (mode.includes("n")) { nb.y = Math.max(0, ob.y + dy); nb.h = Math.max(0.05, ob.h - dy); }
+        nb.w = nb.h * scaledAspect;
+      }
+    } else {
+      if (mode.includes("e")) nb.w = Math.max(0.05, Math.min(1 - ob.x, ob.w + dx));
+      if (mode.includes("s")) nb.h = Math.max(0.05, Math.min(1 - ob.y, ob.h + dy));
+      if (mode.includes("w")) { nb.x = Math.max(0, ob.x + dx); nb.w = Math.max(0.05, ob.w - dx); }
+      if (mode.includes("n")) { nb.y = Math.max(0, ob.y + dy); nb.h = Math.max(0.05, ob.h - dy); }
+    }
+    setBox(nb);
+  };
 
   const kbNum = parseInt(sizeInfo.kb);
   const sizeColor = targetKB
@@ -198,7 +260,7 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
         {/* Header with live size */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>DRAG · RESIZE · CROP</p>
-          <div style={{ display: "flex", align: "center", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.1em" }}>{sizeInfo.px}</span>
             <div style={{ background: estimating ? T.border : sizeColor + "22", border: `1.5px solid ${estimating ? T.border : sizeColor}`, borderRadius: 6, padding: "3px 10px", minWidth: 70, textAlign: "center", transition: "all 0.3s" }}>
               <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, color: estimating ? T.textFaint : sizeColor, letterSpacing: "0.1em" }}>
@@ -211,15 +273,26 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
           </div>
         </div>
 
+        {/* Ratio buttons */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {RATIOS.map(r => (
+            <button key={r.label} onClick={() => applyRatio(r)} style={{
+              padding: "5px 10px", borderRadius: 6, fontFamily: "'Oswald',sans-serif", fontSize: 10,
+              fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", border: "1.5px solid",
+              background: ratio?.label === r.label ? "#C8102E" : T.bgInput,
+              borderColor: ratio?.label === r.label ? "#C8102E" : T.border,
+              color: ratio?.label === r.label ? "#fff" : T.textMuted,
+              transition: "all 0.15s",
+            }}>{r.label}</button>
+          ))}
+        </div>
+
         {/* Crop area */}
         <div className="crop-area" style={{ position: "relative", width: "100%", touchAction: "none", userSelect: "none", borderRadius: 8, overflow: "hidden" }}
-          onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-          onTouchMove={onMove} onTouchEnd={onUp}>
+          onMouseMove={onMoveWithRatio} onMouseUp={onUp} onMouseLeave={onUp}
+          onTouchMove={onMoveWithRatio} onTouchEnd={onUp}>
           <img ref={imgRef} src={src} alt="crop" style={{ width: "100%", display: "block" }}
-            onLoad={() => {
-              // Trigger first size estimate once image loads
-              setBox(b => ({ ...b }));
-            }} />
+            onLoad={() => setBox(b => ({ ...b }))} />
           {/* Dark overlay */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: `${box.y * 100}%`, background: "#00000077" }} />
@@ -234,7 +307,7 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
             {[33.3, 66.6].map(p => <div key={`h${p}`} style={{ position: "absolute", top: `${p}%`, left: 0, right: 0, height: 1, background: "#ffffff33" }} />)}
             {handles.map(h => (
               <div key={h.id} onMouseDown={e => onDown(e, h.id)} onTouchStart={e => onDown(e, h.id)}
-                style={{ position: "absolute", width: 14, height: 14, background: "#C8102E", border: "2px solid #fff", borderRadius: 3, zIndex: 10, ...h.style }} />
+                style={{ position: "absolute", width: 36, height: 36, background: "#C8102Ecc", border: "2px solid #fff", borderRadius: 6, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", ...h.style }} />
             ))}
           </div>
         </div>
