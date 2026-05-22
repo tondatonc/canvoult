@@ -175,15 +175,17 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
     canvas.toBlob(blob => onCrop(new File([blob], "cropped.jpg", { type: "image/jpeg" })), "image/jpeg", quality);
   };
 
+  // Handles: large invisible hitbox (44px) with small visible icon inside
+  // Corner = square icon, edge = rectangle icon
   const handles = [
-    { id: "nw", style: { top: -18, left: -18, cursor: "nw-resize" } },
-    { id: "ne", style: { top: -18, right: -18, cursor: "ne-resize" } },
-    { id: "sw", style: { bottom: -18, left: -18, cursor: "sw-resize" } },
-    { id: "se", style: { bottom: -18, right: -18, cursor: "se-resize" } },
-    { id: "n",  style: { top: -18, left: "50%", transform: "translateX(-50%)", cursor: "n-resize" } },
-    { id: "s",  style: { bottom: -18, left: "50%", transform: "translateX(-50%)", cursor: "s-resize" } },
-    { id: "w",  style: { left: -18, top: "50%", transform: "translateY(-50%)", cursor: "w-resize" } },
-    { id: "e",  style: { right: -18, top: "50%", transform: "translateY(-50%)", cursor: "e-resize" } },
+    { id: "nw", icon: "corner", style: { top: -22, left: -22, cursor: "nw-resize" } },
+    { id: "ne", icon: "corner", style: { top: -22, right: -22, cursor: "ne-resize" } },
+    { id: "sw", icon: "corner", style: { bottom: -22, left: -22, cursor: "sw-resize" } },
+    { id: "se", icon: "corner", style: { bottom: -22, right: -22, cursor: "se-resize" } },
+    { id: "n",  icon: "h-edge", style: { top: -22, left: "50%", transform: "translateX(-50%)", cursor: "n-resize" } },
+    { id: "s",  icon: "h-edge", style: { bottom: -22, left: "50%", transform: "translateX(-50%)", cursor: "s-resize" } },
+    { id: "w",  icon: "v-edge", style: { left: -22, top: "50%", transform: "translateY(-50%)", cursor: "w-resize" } },
+    { id: "e",  icon: "v-edge", style: { right: -22, top: "50%", transform: "translateY(-50%)", cursor: "e-resize" } },
   ];
 
   const RATIOS = [
@@ -211,7 +213,7 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
     setBox({ x, y, w, h });
   };
 
-  // Lock ratio while resizing
+  // Lock ratio while resizing — expands from center when ratio is locked
   const onMoveWithRatio = (e) => {
     if (!startRef.current) return;
     e.preventDefault();
@@ -222,23 +224,44 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
     const ob = startRef.current.box;
     const { mode } = startRef.current;
     let nb = { ...ob };
+
     if (mode === "drag") {
       nb.x = Math.max(0, Math.min(1 - ob.w, ob.x + dx));
       nb.y = Math.max(0, Math.min(1 - ob.h, ob.y + dy));
     } else if (ratio?.w) {
+      // Ratio locked: pick dominant drag axis, resize from center
       const img = imgRef.current;
-      const imgAspect = img.naturalWidth / img.naturalHeight;
-      const targetAspect = ratio.w / ratio.h;
-      const scaledAspect = targetAspect / imgAspect;
-      if (mode.includes("e") || mode.includes("w")) {
-        if (mode.includes("e")) nb.w = Math.max(0.05, Math.min(1 - ob.x, ob.w + dx));
-        if (mode.includes("w")) { nb.x = Math.max(0, ob.x + dx); nb.w = Math.max(0.05, ob.w - dx); }
-        nb.h = nb.w / scaledAspect;
+      const scaledAspect = (ratio.w / ratio.h) / (img.naturalWidth / img.naturalHeight);
+      const cx = ob.x + ob.w / 2;
+      const cy = ob.y + ob.h / 2;
+      // Use whichever axis the handle belongs to
+      const usesH = mode.includes("e") || mode.includes("w");
+      let newHalfW, newHalfH;
+      if (usesH) {
+        const sign = mode.includes("e") ? 1 : -1;
+        newHalfW = Math.max(0.05, ob.w / 2 + sign * dx);
+        newHalfH = newHalfW / scaledAspect;
       } else {
-        if (mode.includes("s")) nb.h = Math.max(0.05, Math.min(1 - ob.y, ob.h + dy));
-        if (mode.includes("n")) { nb.y = Math.max(0, ob.y + dy); nb.h = Math.max(0.05, ob.h - dy); }
-        nb.w = nb.h * scaledAspect;
+        const sign = mode.includes("s") ? 1 : -1;
+        newHalfH = Math.max(0.05, ob.h / 2 + sign * dy);
+        newHalfW = newHalfH * scaledAspect;
       }
+      // For corner handles use diagonal average
+      if (mode.length === 2) {
+        const signX = mode.includes("e") ? 1 : -1;
+        const signY = mode.includes("s") ? 1 : -1;
+        newHalfW = Math.max(0.05, ob.w / 2 + signX * dx);
+        newHalfH = newHalfW / scaledAspect;
+        // Fallback to Y if X gives nothing
+        if (Math.abs(dx) < Math.abs(dy)) {
+          newHalfH = Math.max(0.05, ob.h / 2 + signY * dy);
+          newHalfW = newHalfH * scaledAspect;
+        }
+      }
+      nb.w = Math.min(newHalfW * 2, 1);
+      nb.h = Math.min(newHalfH * 2, 1);
+      nb.x = Math.max(0, Math.min(1 - nb.w, cx - nb.w / 2));
+      nb.y = Math.max(0, Math.min(1 - nb.h, cy - nb.h / 2));
     } else {
       if (mode.includes("e")) nb.w = Math.max(0.05, Math.min(1 - ob.x, ob.w + dx));
       if (mode.includes("s")) nb.h = Math.max(0.05, Math.min(1 - ob.y, ob.h + dy));
@@ -307,7 +330,16 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
             {[33.3, 66.6].map(p => <div key={`h${p}`} style={{ position: "absolute", top: `${p}%`, left: 0, right: 0, height: 1, background: "#ffffff33" }} />)}
             {handles.map(h => (
               <div key={h.id} onMouseDown={e => onDown(e, h.id)} onTouchStart={e => onDown(e, h.id)}
-                style={{ position: "absolute", width: 36, height: 36, background: "#C8102Ecc", border: "2px solid #fff", borderRadius: 6, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", ...h.style }} />
+                style={{ position: "absolute", width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, ...h.style }}>
+                <div style={{
+                  background: "#C8102E",
+                  border: "2px solid #fff",
+                  borderRadius: h.icon === "corner" ? 4 : h.icon === "h-edge" ? 3 : 3,
+                  width:  h.icon === "corner" ? 12 : h.icon === "h-edge" ? 20 : 6,
+                  height: h.icon === "corner" ? 12 : h.icon === "h-edge" ? 6  : 20,
+                  boxShadow: "0 1px 4px #00000055",
+                }} />
+              </div>
             ))}
           </div>
         </div>
@@ -569,8 +601,10 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose }) {
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ width: 85, height: 128, margin: "0 auto 14px", filter: `drop-shadow(0 10px 24px ${color}66)` }}>
-          {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 10 }} /> : <CanSvg color={color} name={can.name} />}
+        <div style={{ width: "min(220px, 55vw)", margin: "0 auto 16px", filter: `drop-shadow(0 10px 24px ${color}66)` }}>
+          {can.image
+            ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "auto", maxHeight: "45vh", objectFit: "contain", borderRadius: 10 }} />
+            : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 24, padding: "4px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 12 }}>
