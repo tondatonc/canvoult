@@ -24,9 +24,18 @@ const BRAND_COLORS = {
   "dr-pepper": "#7B1818", "red-bull": "#C8A900", default: "#C8102E",
 };
 
-function getCanColor(tags = []) {
+// Custom tag colors — merged with BRAND_COLORS, stored in localStorage
+function loadCustomColors() {
+  try { return JSON.parse(localStorage.getItem("cv_tag_colors") || "{}"); } catch { return {}; }
+}
+function saveCustomColors(colors) {
+  localStorage.setItem("cv_tag_colors", JSON.stringify(colors));
+}
+
+function getCanColor(tags = [], customColors = {}) {
   for (const tag of tags) {
     const key = tag.toLowerCase().replace(/\s/g, "-");
+    if (customColors[key]) return customColors[key];
     if (BRAND_COLORS[key]) return BRAND_COLORS[key];
   }
   return BRAND_COLORS.default;
@@ -655,8 +664,8 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
 
 // ─── DETAIL MODAL ─────────────────────────────────────────────────────────────
 
-function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate }) {
-  const color = getCanColor(can.tags);
+function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {} }) {
+  const color = getCanColor(can.tags, customColors);
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
@@ -723,6 +732,203 @@ async function deleteFromBlob(url) {
   } catch (e) { console.error("Blob delete error:", e); }
 }
 
+// ─── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
+
+function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
+  const [queue, setQueue] = useState([]); // [{file, previewUrl, name, tags, uploading, done, url}]
+  const [current, setCurrent] = useState(0);
+  const [tagInput, setTagInput] = useState("");
+  const [sharedTags, setSharedTags] = useState([]);
+  const fileRef = useRef();
+
+  const handleFiles = (files) => {
+    const items = Array.from(files).map(f => ({
+      file: f, previewUrl: URL.createObjectURL(f),
+      name: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
+      tags: [...sharedTags], uploading: false, done: false, url: null, err: null,
+    }));
+    setQueue(items);
+    setCurrent(0);
+  };
+
+  const addSharedTag = () => {
+    const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+    if (t && !sharedTags.includes(t)) setSharedTags(p => [...p, t]);
+    setTagInput("");
+  };
+
+  const updateItem = (i, patch) => setQueue(q => q.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+
+  const uploadAll = async () => {
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
+      if (item.done) continue;
+      setCurrent(i);
+      updateItem(i, { uploading: true });
+      try {
+        const compressed = await compressCanPhoto(item.file);
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "image/jpeg", "x-filename": `${folder}/${Date.now()}.jpg`, "x-canvault-auth": atob(_PH) },
+          body: compressed,
+        });
+        if (!res.ok) throw new Error(`${res.status}`);
+        const { url } = await res.json();
+        updateItem(i, { uploading: false, done: true, url });
+        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, image: url, addedAt: Date.now() });
+      } catch (err) {
+        updateItem(i, { uploading: false, err: err.message });
+      }
+    }
+  };
+
+  const allDone = queue.length > 0 && queue.every(i => i.done);
+  const anyUploading = queue.some(i => i.uploading);
+
+  return (
+    <ModalShell onClose={onClose} T={T}>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Upload</div>
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 16px", borderRadius: 2 }} />
+
+      {queue.length === 0 ? (
+        <>
+          {/* Shared tags before selecting files */}
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 6 }}>SHARED TAGS (applied to all cans)</p>
+          <div style={{ display: "flex", gap: 7, marginBottom: 8 }}>
+            <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addSharedTag())} placeholder="330ml, limited…"
+              style={{ flex: 1, padding: "9px 12px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+            <button onClick={addSharedTag} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 14px", color: "#fff", cursor: "pointer", fontSize: 18, fontWeight: 700 }}>+</button>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16, minHeight: 24 }}>
+            {sharedTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setSharedTags(p => p.filter(x => x !== t))} />)}
+          </div>
+
+          <label style={{ display: "block", padding: "20px", background: T.bgInput, border: `2px dashed ${T.border}`, borderRadius: 12, textAlign: "center", cursor: "pointer" }}>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
+            <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.12em" }}>TAP TO SELECT MULTIPLE PHOTOS</p>
+          </label>
+        </>
+      ) : (
+        <>
+          {/* Progress summary */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.1em" }}>{queue.filter(i => i.done).length} / {queue.length} UPLOADED</span>
+            {!allDone && !anyUploading && (
+              <button onClick={uploadAll} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 18px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>⬆️ UPLOAD ALL</button>
+            )}
+            {allDone && <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#22C55E", letterSpacing: "0.1em" }}>✅ ALL DONE!</span>}
+          </div>
+
+          {/* Progress bar */}
+          <div style={{ height: 4, background: T.border, borderRadius: 2, marginBottom: 14, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "#C8102E", borderRadius: 2, width: `${(queue.filter(i => i.done).length / queue.length) * 100}%`, transition: "width 0.3s" }} />
+          </div>
+
+          {/* Queue list */}
+          <div style={{ maxHeight: "45vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+            {queue.map((item, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px", background: item.done ? "#22C55E11" : T.bgInput, border: `1.5px solid ${item.done ? "#22C55E44" : item.err ? "#FF444444" : T.border}`, borderRadius: 10 }}>
+                {/* Thumbnail */}
+                <img src={item.previewUrl} alt="" style={{ width: 50, height: 70, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Name input */}
+                  <input value={item.name} onChange={e => updateItem(i, { name: e.target.value })} disabled={item.done || item.uploading}
+                    style={{ width: "100%", padding: "6px 10px", marginBottom: 6, background: item.done ? "transparent" : T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+                  {/* Tags */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                    {item.tags.map(t => <TagPill key={t} tag={t} T={T} onRemove={item.done ? null : () => updateItem(i, { tags: item.tags.filter(x => x !== t) })} />)}
+                  </div>
+                </div>
+                {/* Status */}
+                <div style={{ flexShrink: 0, fontSize: 18, marginTop: 4 }}>
+                  {item.uploading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
+                    : item.done ? "✅"
+                    : item.err ? "❌"
+                    : "⏸️"}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!anyUploading && !allDone && (
+            <button onClick={uploadAll} style={{ width: "100%", marginTop: 14, padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
+              ⬆️ UPLOAD {queue.length} CANS
+            </button>
+          )}
+          {allDone && (
+            <button onClick={onClose} style={{ width: "100%", marginTop: 14, padding: "13px", background: "#22C55E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer" }}>
+              ✅ DONE — CLOSE
+            </button>
+          )}
+        </>
+      )}
+    </ModalShell>
+  );
+}
+
+// ─── TAG COLOR MODAL ──────────────────────────────────────────────────────────
+
+function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
+  const [colors, setColors] = useState({ ...customColors });
+  const [newTag, setNewTag] = useState("");
+  const PRESETS = ["#C8102E","#FF6B00","#FFCC00","#22C55E","#00843D","#3B82F6","#004B93","#8B5CF6","#EC4899","#14B8A6","#F97316","#6B7280"];
+
+  const allKnown = [...new Set([...Object.keys(BRAND_COLORS).filter(k => k !== "default"), ...allTags, ...Object.keys(colors)])].sort();
+
+  return (
+    <ModalShell onClose={onClose} T={T}>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Tag Colors</div>
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 16px", borderRadius: 2 }} />
+
+      {/* Add custom tag */}
+      <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
+        <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && newTag.trim() && (setColors(c => ({ ...c, [newTag.trim().toLowerCase().replace(/\s+/g,"-")]: "#C8102E" })), setNewTag(""))} placeholder="Add custom tag…"
+          style={{ flex: 1, padding: "9px 12px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+        <button onClick={() => { const t = newTag.trim().toLowerCase().replace(/\s+/g,"-"); if (t) { setColors(c => ({ ...c, [t]: "#C8102E" })); setNewTag(""); } }} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 14px", color: "#fff", cursor: "pointer", fontSize: 18, fontWeight: 700 }}>+</button>
+      </div>
+
+      {/* Tag list */}
+      <div style={{ maxHeight: "50vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        {allKnown.map(tag => {
+          const current = colors[tag] || BRAND_COLORS[tag] || null;
+          const isBuiltin = !!BRAND_COLORS[tag];
+          return (
+            <div key={tag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 9 }}>
+              {/* Color dot */}
+              <div style={{ width: 20, height: 20, borderRadius: "50%", background: current || T.border, border: `2px solid ${T.border}`, flexShrink: 0 }} />
+              {/* Tag name */}
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.text, flex: 1, letterSpacing: "0.05em" }}>
+                #{tag}
+                {isBuiltin && <span style={{ fontFamily: "Georgia,serif", fontSize: 9, color: T.textFaint, marginLeft: 6, fontStyle: "italic" }}>built-in</span>}
+              </span>
+              {/* Preset color swatches */}
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 160 }}>
+                {PRESETS.map(c => (
+                  <div key={c} onClick={() => setColors(cc => ({ ...cc, [tag]: c }))}
+                    style={{ width: 18, height: 18, borderRadius: "50%", background: c, cursor: "pointer", border: colors[tag] === c ? "2px solid #fff" : "2px solid transparent", boxShadow: colors[tag] === c ? `0 0 0 2px ${c}` : "none", transition: "all 0.1s" }} />
+                ))}
+                {/* Native color picker */}
+                <label style={{ width: 18, height: 18, borderRadius: "50%", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)", cursor: "pointer", border: "2px solid transparent", overflow: "hidden", flexShrink: 0 }}>
+                  <input type="color" value={colors[tag] || "#C8102E"} onChange={e => setColors(cc => ({ ...cc, [tag]: e.target.value }))} style={{ opacity: 0, width: 0, height: 0 }} />
+                </label>
+                {/* Remove custom */}
+                {colors[tag] && (
+                  <button onClick={() => { const c = { ...colors }; delete c[tag]; setColors(c); }} style={{ width: 18, height: 18, background: "none", border: "none", color: T.textFaint, cursor: "pointer", fontSize: 12, padding: 0, lineHeight: 1 }}>×</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={() => { saveCustomColors(colors); onSave(colors); onClose(); }} style={{ width: "100%", padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
+        SAVE COLORS
+      </button>
+    </ModalShell>
+  );
+}
+
 // ─── LOADING SPINNER ──────────────────────────────────────────────────────────
 
 function LoadingSpinner({ T }) {
@@ -745,6 +951,7 @@ function CollectionPage({ T, isAdmin }) {
   const [viewMode, setViewMode] = useState("grid");
   const [modal, setModal] = useState(null);
   const [pinned, setPinned] = useState(() => { try { return JSON.parse(localStorage.getItem("cv_pinned") || "[]"); } catch { return []; } });
+  const [customColors, setCustomColors] = useState(() => loadCustomColors());
 
   useEffect(() => { localStorage.setItem("cv_pinned", JSON.stringify(pinned)); }, [pinned]);
 
@@ -828,7 +1035,11 @@ function CollectionPage({ T, isAdmin }) {
             <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🎲 RANDOM</button>
           )}
           {isAdmin && (
-            <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD CAN</button>
+            <>
+              <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>📦 BULK</button>
+              <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🎨 COLORS</button>
+              <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD CAN</button>
+            </>
           )}
         </div>
       </div>
@@ -841,18 +1052,20 @@ function CollectionPage({ T, isAdmin }) {
         </div>
       ) : viewMode === "grid" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(155px,1fr))", gap: 16 }}>
-          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+          {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
 
       {/* Modals */}
       {modal === "add" && <AddEditModal T={T} onSave={saveCan} onClose={() => setModal(null)} />}
+      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" onSave={async (can) => { await saveCan(can); }} onClose={() => setModal(null)} />}
+      {modal === "colors" && <TagColorModal T={T} allTags={allTags} customColors={customColors} onSave={setCustomColors} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
-        <DetailModal T={T} can={modal.can} isAdmin={isAdmin}
+        <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
           onDelete={id => { removeCan(id); setModal(null); }}
           onEdit={() => setModal({ can: modal.can, edit: true })}
           onDuplicate={can => { saveCan({ ...can, id: Date.now().toString(), name: can.name + " (copy)", addedAt: Date.now() }); setModal(null); }}
@@ -866,8 +1079,8 @@ function CollectionPage({ T, isAdmin }) {
   );
 }
 
-function GridCard({ can, i, T, onClick, pinned, onPin }) {
-  const color = getCanColor(can.tags);
+function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
+  const color = getCanColor(can.tags, customColors);
   return (
     <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${pinned ? "#C8102E88" : T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010,0 1px 0 #fff inset", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 12px 30px ${color}33`; }}
@@ -890,8 +1103,8 @@ function GridCard({ can, i, T, onClick, pinned, onPin }) {
   );
 }
 
-function TileCard({ can, i, T, onClick }) {
-  const color = getCanColor(can.tags);
+function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
+  const color = getCanColor(can.tags, customColors);
   return (
     <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s", boxShadow: T.isDark ? "0 2px 12px #00000044" : "0 2px 8px #00000010" }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 18px ${color}28`; }}
