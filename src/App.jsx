@@ -112,7 +112,7 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
     const img = imgRef.current;
     const canvas = magCanvasRef.current;
     const ctx = canvas.getContext("2d");
-    const MAG = 3; // zoom level
+    const MAG = 1; // no zoom — just shows what's under finger
     const SIZE = 100; // canvas size in px
 
     // Which corner/edge of the crop box to magnify
