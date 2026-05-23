@@ -34,17 +34,17 @@ export async function getCans() {
 }
 
 export async function upsertCan(can) {
-  // Use POST with Prefer: resolution=merge-duplicates for upsert
   return request(base("cans"), {
     method: "POST",
-    headers: headers({
-      Prefer: "resolution=merge-duplicates,return=minimal",
-    }),
+    headers: headers({ Prefer: "resolution=merge-duplicates,return=minimal" }),
     body: JSON.stringify({
       id: can.id,
       name: can.name,
       image_url: can.image || null,
       tags: can.tags,
+      note: can.note || null,
+      price: can.price || null,
+      country: can.country || null,
       added_at: new Date(can.addedAt).toISOString(),
     }),
   });
@@ -68,15 +68,15 @@ export async function getWishlist() {
 export async function upsertWish(wish) {
   return request(base("wishlist"), {
     method: "POST",
-    headers: headers({
-      Prefer: "resolution=merge-duplicates,return=minimal",
-    }),
+    headers: headers({ Prefer: "resolution=merge-duplicates,return=minimal" }),
     body: JSON.stringify({
       id: wish.id,
       name: wish.name,
       image_url: wish.image || null,
       tags: wish.tags,
       note: wish.note || null,
+      price: wish.price || null,
+      country: wish.country || null,
       added_at: new Date(wish.addedAt).toISOString(),
     }),
   });
@@ -124,6 +124,9 @@ export const rowToCan = r => ({
   name: r.name,
   image: r.image_url || null,
   tags: r.tags || [],
+  note: r.note || "",
+  price: r.price || "",
+  country: r.country || "",
   addedAt: new Date(r.added_at).getTime(),
 });
 
@@ -133,6 +136,8 @@ export const rowToWish = r => ({
   image: r.image_url || null,
   tags: r.tags || [],
   note: r.note || "",
+  price: r.price || "",
+  country: r.country || "",
   addedAt: new Date(r.added_at).getTime(),
 });
 
