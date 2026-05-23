@@ -101,8 +101,53 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
   const [box, setBox] = useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
   const [sizeInfo, setSizeInfo] = useState({ px: "", kb: "…" });
   const [estimating, setEstimating] = useState(false);
+  const [activeHandle, setActiveHandle] = useState(null); // which handle is being dragged
+  const magCanvasRef = useRef();
   const startRef = useRef();
   const estimateTimer = useRef();
+
+  // Draw magnifier showing the corner being dragged
+  useEffect(() => {
+    if (!activeHandle || activeHandle === "drag" || !magCanvasRef.current || !imgRef.current) return;
+    const img = imgRef.current;
+    const canvas = magCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const MAG = 3; // zoom level
+    const SIZE = 100; // canvas size in px
+
+    // Which corner/edge of the crop box to magnify
+    const cx = activeHandle.includes("e") ? (box.x + box.w) : box.x;
+    const cy = activeHandle.includes("s") ? (box.y + box.h) : box.y;
+
+    // Source pixel coords on original image
+    const sx = cx * img.naturalWidth;
+    const sy = cy * img.naturalHeight;
+    const srcSize = SIZE / MAG;
+
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    ctx.save();
+    // Circle clip
+    ctx.beginPath();
+    ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(img, sx - srcSize / 2, sy - srcSize / 2, srcSize, srcSize, 0, 0, SIZE, SIZE);
+    ctx.restore();
+
+    // Crosshair
+    ctx.strokeStyle = "#C8102E";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(SIZE / 2, SIZE / 2 - 8); ctx.lineTo(SIZE / 2, SIZE / 2 + 8);
+    ctx.moveTo(SIZE / 2 - 8, SIZE / 2); ctx.lineTo(SIZE / 2 + 8, SIZE / 2);
+    ctx.stroke();
+
+    // Border
+    ctx.strokeStyle = "#C8102E";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }, [activeHandle, box]);
 
   const getXY = (e, rect) => {
     const s = e.touches ? e.touches[0] : e;
@@ -114,31 +159,10 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
     const rect = e.currentTarget.closest(".crop-area").getBoundingClientRect();
     startRef.current = { pt: getXY(e, rect), box: { ...box }, mode };
     if (mode === "drag") setDragging(true);
+    setActiveHandle(mode);
   };
 
-  const onMove = (e) => {
-    if (!startRef.current) return;
-    e.preventDefault();
-    const rect = document.querySelector(".crop-area").getBoundingClientRect();
-    const pt = getXY(e, rect);
-    const dx = pt.x - startRef.current.pt.x;
-    const dy = pt.y - startRef.current.pt.y;
-    const ob = startRef.current.box;
-    const { mode } = startRef.current;
-    let nb = { ...ob };
-    if (mode === "drag") {
-      nb.x = Math.max(0, Math.min(1 - ob.w, ob.x + dx));
-      nb.y = Math.max(0, Math.min(1 - ob.h, ob.y + dy));
-    } else {
-      if (mode.includes("e")) nb.w = Math.max(0.05, Math.min(1 - ob.x, ob.w + dx));
-      if (mode.includes("s")) nb.h = Math.max(0.05, Math.min(1 - ob.y, ob.h + dy));
-      if (mode.includes("w")) { nb.x = Math.max(0, ob.x + dx); nb.w = Math.max(0.05, ob.w - dx); }
-      if (mode.includes("n")) { nb.y = Math.max(0, ob.y + dy); nb.h = Math.max(0.05, ob.h - dy); }
-    }
-    setBox(nb);
-  };
-
-  const onUp = () => { setDragging(false); startRef.current = null; };
+  const onUp = () => { setDragging(false); startRef.current = null; setActiveHandle(null); };
 
   // Live size estimation — debounced so it doesn't lag while dragging
   useEffect(() => {
@@ -323,7 +347,19 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
             <div style={{ position: "absolute", top: `${box.y * 100}%`, left: 0, width: `${box.x * 100}%`, height: `${box.h * 100}%`, background: "#00000077" }} />
             <div style={{ position: "absolute", top: `${box.y * 100}%`, right: 0, width: `${(1 - box.x - box.w) * 100}%`, height: `${box.h * 100}%`, background: "#00000077" }} />
           </div>
-          {/* Crop box */}
+          {/* Magnifier — shows corner being dragged, positioned at opposite corner */}
+          {activeHandle && activeHandle !== "drag" && (() => {
+            // Position magnifier at opposite side from active handle
+            const top = activeHandle.includes("s") ? "8px" : "auto";
+            const bottom = activeHandle.includes("n") || (!activeHandle.includes("s") && !activeHandle.includes("n")) ? "8px" : "auto";
+            const left = activeHandle.includes("e") ? "8px" : "auto";
+            const right = activeHandle.includes("w") || (!activeHandle.includes("e") && !activeHandle.includes("w")) ? "8px" : "auto";
+            return (
+              <div style={{ position: "absolute", top, bottom, left, right, zIndex: 20, pointerEvents: "none", filter: "drop-shadow(0 2px 8px #00000088)" }}>
+                <canvas ref={magCanvasRef} width={100} height={100} style={{ borderRadius: "50%", display: "block" }} />
+              </div>
+            );
+          })()}
           <div onMouseDown={e => onDown(e, "drag")} onTouchStart={e => onDown(e, "drag")}
             style={{ position: "absolute", left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, border: "2px solid #C8102E", boxSizing: "border-box", cursor: dragging ? "grabbing" : "grab" }}>
             {[33.3, 66.6].map(p => <div key={`v${p}`} style={{ position: "absolute", left: `${p}%`, top: 0, bottom: 0, width: 1, background: "#ffffff33" }} />)}
