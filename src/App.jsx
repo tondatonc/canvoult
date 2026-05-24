@@ -735,38 +735,58 @@ async function deleteFromBlob(url) {
 // ─── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
 
 function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
-  const [queue, setQueue] = useState([]); // [{file, previewUrl, name, tags, uploading, done, url}]
-  const [current, setCurrent] = useState(0);
+  const [queue, setQueue] = useState([]);
   const [tagInput, setTagInput] = useState("");
   const [sharedTags, setSharedTags] = useState([]);
+  const [cropIdx, setCropIdx] = useState(null); // index of item being cropped
+  const [perTagInput, setPerTagInput] = useState({}); // {idx: inputValue}
   const fileRef = useRef();
 
   const handleFiles = (files) => {
     const items = Array.from(files).map(f => ({
-      file: f, previewUrl: URL.createObjectURL(f),
+      file: f,
+      previewUrl: URL.createObjectURL(f),
+      croppedFile: null, // set after cropping
+      croppedUrl: null,
       name: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
-      tags: [...sharedTags], uploading: false, done: false, url: null, err: null,
+      tags: [...sharedTags],
+      uploading: false, done: false, url: null, err: null,
     }));
     setQueue(items);
-    setCurrent(0);
   };
 
   const addSharedTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
-    if (t && !sharedTags.includes(t)) setSharedTags(p => [...p, t]);
+    if (!t) return;
+    if (!sharedTags.includes(t)) setSharedTags(p => [...p, t]);
+    // also add to all items not yet uploaded
+    setQueue(q => q.map(item => item.done ? item : { ...item, tags: item.tags.includes(t) ? item.tags : [...item.tags, t] }));
     setTagInput("");
   };
 
+  const addItemTag = (i) => {
+    const raw = (perTagInput[i] || "").trim().toLowerCase().replace(/\s+/g, "-");
+    if (!raw) return;
+    setQueue(q => q.map((item, idx) => idx === i && !item.tags.includes(raw) ? { ...item, tags: [...item.tags, raw] } : item));
+    setPerTagInput(p => ({ ...p, [i]: "" }));
+  };
+
   const updateItem = (i, patch) => setQueue(q => q.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+
+  const handleCropped = (i, croppedFile) => {
+    const url = URL.createObjectURL(croppedFile);
+    updateItem(i, { croppedFile, croppedUrl: url });
+    setCropIdx(null);
+  };
 
   const uploadAll = async () => {
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       if (item.done) continue;
-      setCurrent(i);
-      updateItem(i, { uploading: true });
+      updateItem(i, { uploading: true, err: null });
       try {
-        const compressed = await compressCanPhoto(item.file);
+        const src = item.croppedFile || item.file;
+        const compressed = await compressCanPhoto(src);
         const res = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "image/jpeg", "x-filename": `${folder}/${Date.now()}.jpg`, "x-canvault-auth": atob(_PH) },
@@ -784,80 +804,126 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
 
   const allDone = queue.length > 0 && queue.every(i => i.done);
   const anyUploading = queue.some(i => i.uploading);
+  const doneCount = queue.filter(i => i.done).length;
+
+  // Show CropModal fullscreen when cropping a bulk item
+  if (cropIdx !== null && queue[cropIdx]) {
+    return (
+      <CropModal
+        src={queue[cropIdx].croppedUrl || queue[cropIdx].previewUrl}
+        T={T}
+        quality={0.92}
+        targetKB={150}
+        onCrop={f => handleCropped(cropIdx, f)}
+        onCancel={() => setCropIdx(null)}
+      />
+    );
+  }
 
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Upload</div>
-      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 16px", borderRadius: 2 }} />
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
+
+      {/* Shared tags — always visible */}
+      <div style={{ marginBottom: 12, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 6 }}>SHARED TAGS — added to every can</p>
+        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+          <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+            onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addSharedTag())}
+            placeholder="330ml, limited…"
+            style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+          <button onClick={addSharedTag} style={{ background: "#C8102E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minHeight: 20 }}>
+          {sharedTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setSharedTags(p => p.filter(x => x !== t))} />)}
+        </div>
+      </div>
 
       {queue.length === 0 ? (
-        <>
-          {/* Shared tags before selecting files */}
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 6 }}>SHARED TAGS (applied to all cans)</p>
-          <div style={{ display: "flex", gap: 7, marginBottom: 8 }}>
-            <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addSharedTag())} placeholder="330ml, limited…"
-              style={{ flex: 1, padding: "9px 12px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
-            <button onClick={addSharedTag} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 14px", color: "#fff", cursor: "pointer", fontSize: 18, fontWeight: 700 }}>+</button>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16, minHeight: 24 }}>
-            {sharedTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setSharedTags(p => p.filter(x => x !== t))} />)}
-          </div>
-
-          <label style={{ display: "block", padding: "20px", background: T.bgInput, border: `2px dashed ${T.border}`, borderRadius: 12, textAlign: "center", cursor: "pointer" }}>
-            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
-            <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
-            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.12em" }}>TAP TO SELECT MULTIPLE PHOTOS</p>
-          </label>
-        </>
+        <label style={{ display: "block", padding: "24px 20px", background: T.bgInput, border: `2px dashed ${T.border}`, borderRadius: 12, textAlign: "center", cursor: "pointer" }}>
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.12em" }}>TAP TO SELECT MULTIPLE PHOTOS</p>
+        </label>
       ) : (
         <>
-          {/* Progress summary */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.1em" }}>{queue.filter(i => i.done).length} / {queue.length} UPLOADED</span>
-            {!allDone && !anyUploading && (
-              <button onClick={uploadAll} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 18px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>⬆️ UPLOAD ALL</button>
-            )}
-            {allDone && <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#22C55E", letterSpacing: "0.1em" }}>✅ ALL DONE!</span>}
-          </div>
-
           {/* Progress bar */}
-          <div style={{ height: 4, background: T.border, borderRadius: 2, marginBottom: 14, overflow: "hidden" }}>
-            <div style={{ height: "100%", background: "#C8102E", borderRadius: 2, width: `${(queue.filter(i => i.done).length / queue.length) * 100}%`, transition: "width 0.3s" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.1em" }}>{doneCount} / {queue.length} UPLOADED</span>
+            {allDone && <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#22C55E" }}>✅ ALL DONE!</span>}
+          </div>
+          <div style={{ height: 4, background: T.border, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "#C8102E", borderRadius: 2, width: `${(doneCount / queue.length) * 100}%`, transition: "width 0.4s" }} />
           </div>
 
-          {/* Queue list */}
-          <div style={{ maxHeight: "45vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Queue */}
+          <div style={{ maxHeight: "48vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
             {queue.map((item, i) => (
-              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px", background: item.done ? "#22C55E11" : T.bgInput, border: `1.5px solid ${item.done ? "#22C55E44" : item.err ? "#FF444444" : T.border}`, borderRadius: 10 }}>
-                {/* Thumbnail */}
-                <img src={item.previewUrl} alt="" style={{ width: 50, height: 70, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Name input */}
-                  <input value={item.name} onChange={e => updateItem(i, { name: e.target.value })} disabled={item.done || item.uploading}
-                    style={{ width: "100%", padding: "6px 10px", marginBottom: 6, background: item.done ? "transparent" : T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
-                  {/* Tags */}
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                    {item.tags.map(t => <TagPill key={t} tag={t} T={T} onRemove={item.done ? null : () => updateItem(i, { tags: item.tags.filter(x => x !== t) })} />)}
+              <div key={i} style={{ background: item.done ? "#22C55E0a" : T.bgInput, border: `1.5px solid ${item.done ? "#22C55E44" : item.err ? "#FF444466" : T.border}`, borderRadius: 10, padding: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  {/* Thumbnail + crop button */}
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <img
+                      src={item.croppedUrl || item.previewUrl}
+                      alt=""
+                      style={{ width: 52, height: 72, objectFit: "cover", borderRadius: 7, display: "block", border: item.croppedUrl ? "2px solid #C8102E" : `1px solid ${T.border}` }}
+                    />
+                    {!item.done && !item.uploading && (
+                      <button
+                        onClick={() => setCropIdx(i)}
+                        title="Crop this photo"
+                        style={{ position: "absolute", bottom: 2, right: 2, background: "#C8102Ecc", border: "none", borderRadius: 4, padding: "2px 5px", color: "#fff", fontSize: 10, cursor: "pointer", lineHeight: 1 }}
+                      >✂️</button>
+                    )}
                   </div>
-                </div>
-                {/* Status */}
-                <div style={{ flexShrink: 0, fontSize: 18, marginTop: 4 }}>
-                  {item.uploading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
-                    : item.done ? "✅"
-                    : item.err ? "❌"
-                    : "⏸️"}
+
+                  {/* Name + status */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <input
+                      value={item.name}
+                      onChange={e => updateItem(i, { name: e.target.value })}
+                      disabled={item.done || item.uploading}
+                      style={{ width: "100%", padding: "6px 9px", marginBottom: 6, background: item.done ? "transparent" : T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }}
+                    />
+                    {/* Per-item tags */}
+                    {!item.done && (
+                      <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
+                        <input
+                          value={perTagInput[i] || ""}
+                          onChange={e => setPerTagInput(p => ({ ...p, [i]: e.target.value }))}
+                          onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addItemTag(i))}
+                          placeholder="add tag…"
+                          style={{ flex: 1, padding: "4px 8px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 6, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }}
+                        />
+                        <button onClick={() => addItemTag(i)} style={{ background: "#C8102E", border: "none", borderRadius: 6, padding: "0 10px", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>+</button>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                      {item.tags.map(t => (
+                        <TagPill key={t} tag={t} T={T} onRemove={item.done ? null : () => updateItem(i, { tags: item.tags.filter(x => x !== t) })} />
+                      ))}
+                    </div>
+                    {item.err && <p style={{ color: "#FF4444", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginTop: 4 }}>❌ {item.err}</p>}
+                  </div>
+
+                  {/* Status icon */}
+                  <div style={{ flexShrink: 0, fontSize: 18 }}>
+                    {item.uploading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
+                      : item.done ? "✅" : item.err ? "❌" : "⏸️"}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
 
           {!anyUploading && !allDone && (
-            <button onClick={uploadAll} style={{ width: "100%", marginTop: 14, padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
-              ⬆️ UPLOAD {queue.length} CANS
+            <button onClick={uploadAll} style={{ width: "100%", padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
+              ⬆️ UPLOAD {queue.length - doneCount} CANS
             </button>
           )}
           {allDone && (
-            <button onClick={onClose} style={{ width: "100%", marginTop: 14, padding: "13px", background: "#22C55E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer" }}>
+            <button onClick={onClose} style={{ width: "100%", padding: "13px", background: "#22C55E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer" }}>
               ✅ DONE — CLOSE
             </button>
           )}
@@ -912,9 +978,11 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
                 <label style={{ width: 18, height: 18, borderRadius: "50%", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)", cursor: "pointer", border: "2px solid transparent", overflow: "hidden", flexShrink: 0 }}>
                   <input type="color" value={colors[tag] || "#C8102E"} onChange={e => setColors(cc => ({ ...cc, [tag]: e.target.value }))} style={{ opacity: 0, width: 0, height: 0 }} />
                 </label>
-                {/* Remove custom */}
+                {/* Remove custom color */}
                 {colors[tag] && (
-                  <button onClick={() => { const c = { ...colors }; delete c[tag]; setColors(c); }} style={{ width: 18, height: 18, background: "none", border: "none", color: T.textFaint, cursor: "pointer", fontSize: 12, padding: 0, lineHeight: 1 }}>×</button>
+                  <button onClick={() => { const c = { ...colors }; delete c[tag]; setColors(c); }}
+                    title="Remove custom color"
+                    style={{ width: 22, height: 22, background: "#FF444422", border: "1.5px solid #FF444466", borderRadius: 4, color: "#FF4444", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
                 )}
               </div>
             </div>
@@ -977,15 +1045,20 @@ function CollectionPage({ T, isAdmin }) {
 
   const togglePin = (id) => setPinned(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
-  const saveCan = async can => {
+  const saveCan = async (can, { closeModal = true, refetch = true } = {}) => {
     if (db.isConfigured()) {
       await db.upsertCan(can).catch(console.error);
-      const rows = await db.getCans().catch(() => null);
-      if (rows) setCans(rows.map(db.rowToCan));
+      if (refetch) {
+        const rows = await db.getCans().catch(() => null);
+        if (rows) setCans(rows.map(db.rowToCan));
+      } else {
+        // Optimistic update — just prepend/update locally
+        setCans(p => p.find(c => c.id === can.id) ? p.map(c => c.id === can.id ? can : c) : [can, ...p]);
+      }
     } else {
       setCans(p => p.find(c => c.id === can.id) ? p.map(c => c.id === can.id ? can : c) : [can, ...p]);
     }
-    setModal(null);
+    if (closeModal) setModal(null);
   };
 
   const removeCan = async id => {
@@ -1061,8 +1134,8 @@ function CollectionPage({ T, isAdmin }) {
       )}
 
       {/* Modals */}
-      {modal === "add" && <AddEditModal T={T} onSave={saveCan} onClose={() => setModal(null)} />}
-      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" onSave={async (can) => { await saveCan(can); }} onClose={() => setModal(null)} />}
+      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} />}
+      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTags} customColors={customColors} onSave={setCustomColors} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
