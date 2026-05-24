@@ -1045,8 +1045,20 @@ function CollectionPage({ T, isAdmin }) {
 
   useEffect(() => {
     if (!db.isConfigured()) { setCans(SAMPLE_CANS); setLoading(false); return; }
-    db.getCans().then(rows => { setCans(rows.map(db.rowToCan)); setLoading(false); })
-      .catch(() => { setCans(SAMPLE_CANS); setLoading(false); });
+    db.getCans().then(rows => {
+      const loaded = rows.map(db.rowToCan);
+      setCans(loaded);
+      setLoading(false);
+      // Deep link: ?can=ID opens that can's detail modal
+      const params = new URLSearchParams(window.location.search);
+      const canId = params.get("can");
+      if (canId) {
+        const target = loaded.find(c => c.id === canId);
+        if (target) setModal({ can: target });
+        // Clean URL without reloading
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }).catch(() => { setCans(SAMPLE_CANS); setLoading(false); });
   }, []);
 
   const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
@@ -1700,8 +1712,12 @@ function StatsPage({ T }) {
 
   const tagCounts = cans.reduce((acc, c) => { c.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  const brandTags = Object.keys(BRAND_COLORS).filter(b => b !== "default");
-  const brandCounts = brandTags.map(b => ({ brand: b, count: cans.filter(c => c.tags.includes(b)).length })).filter(b => b.count > 0).sort((a, b) => b.count - a.count);
+  const customColors = loadCustomColors();
+  const brandTags = [...new Set([
+    ...Object.keys(BRAND_COLORS).filter(b => b !== "default"),
+    ...Object.keys(customColors),
+  ])];
+  const brandCounts = brandTags.map(b => ({ brand: b, count: cans.filter(c => c.tags.includes(b)).length, color: customColors[b] || BRAND_COLORS[b] || "#C8102E" })).filter(b => b.count > 0).sort((a, b) => b.count - a.count);
 
   // Growth by month
   const byMonth = {};
@@ -1763,12 +1779,12 @@ function StatsPage({ T }) {
         {brandCounts.length > 0 && (
           <div style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px" }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 12 }}>BRANDS</p>
-            {brandCounts.slice(0, 8).map(({ brand, count }) => (
+            {brandCounts.slice(0, 8).map(({ brand, count, color }) => (
               <div key={brand} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: BRAND_COLORS[brand] || "#C8102E", flexShrink: 0 }} />
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
                 <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.text, flex: 1, letterSpacing: "0.05em" }}>{brand}</div>
                 <div style={{ flex: 2, height: 6, background: T.border, borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ height: "100%", background: BRAND_COLORS[brand] || "#C8102E", width: `${(count / brandCounts[0].count) * 100}%`, borderRadius: 3 }} />
+                  <div style={{ height: "100%", background: color, width: `${(count / brandCounts[0].count) * 100}%`, borderRadius: 3 }} />
                 </div>
                 <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, minWidth: 20, textAlign: "right" }}>{count}</div>
               </div>
