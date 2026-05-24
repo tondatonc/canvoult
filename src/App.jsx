@@ -666,6 +666,19 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
 
 function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {} }) {
   const color = getCanColor(can.tags, customColors);
+  const [copied, setCopied] = useState(false);
+
+  const shareUrl = `${window.location.origin}/?can=${can.id}`;
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({ title: can.name, text: `Check out this can: ${can.name}`, url: shareUrl });
+    } else {
+      navigator.clipboard?.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
@@ -675,9 +688,11 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
             : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 24, padding: "4px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
-        <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 12 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
           ADDED {new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}
         </p>
+        {can.country && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, marginBottom: 4 }}>{can.country}</p>}
+        {can.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 11, letterSpacing: "0.1em", marginBottom: 8 }}>💰 {can.price}</p>}
         {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", marginBottom: 12, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginBottom: 18 }}>
           {can.tags.map(t => <TagPill key={t} tag={t} T={T} />)}
@@ -685,11 +700,16 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
           <div style={{ flex: 1, height: 1, background: T.border }} /><span style={{ color: "#C8102E" }}>★</span><div style={{ flex: 1, height: 1, background: T.border }} />
         </div>
+
+        {/* Share — always visible */}
+        <button onClick={handleShare} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 20px", color: copied ? "#22C55E" : T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer", marginBottom: isAdmin ? 10 : 0, transition: "color 0.2s" }}>
+          {copied ? "✅ LINK COPIED!" : "🔗 SHARE CAN"}
+        </button>
+
         {isAdmin && (
           <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={onEdit} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>EDIT</button>
             <button onClick={() => onDuplicate(can)} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>📋 COPY</button>
-            <button onClick={() => { navigator.share ? navigator.share({ title: can.name, url: window.location.href }) : navigator.clipboard?.writeText(window.location.href); }} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🔗 SHARE</button>
             <button onClick={() => { onDelete(can.id); onClose(); }} style={{ background: "transparent", border: "2px solid #C8102E66", borderRadius: 9, padding: "9px 16px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>REMOVE</button>
           </div>
         )}
@@ -1545,6 +1565,115 @@ function CanWallPage({ T, isAdmin }) {
   );
 }
 
+// ─── BLOB MIGRATION TOOL ──────────────────────────────────────────────────────
+// Moves images that are at root of Blob (no folder) into collection/ folder
+// and updates Supabase with the new URL
+
+function MigrateBlobTool({ T, cans, onDone }) {
+  const [state, setState] = useState("idle"); // idle | running | done | error
+  const [log, setLog] = useState([]);
+  const [count, setCount] = useState({ done: 0, skip: 0, fail: 0, total: 0 });
+
+  const addLog = (msg) => setLog(p => [...p, msg]);
+
+  const needsMigration = cans.filter(c =>
+    c.image &&
+    c.image.startsWith("http") &&
+    !c.image.includes("data:") &&
+    // Not already in a folder — Blob URLs look like: https://xxx.blob.vercel-storage.com/FILENAME
+    // Foldered ones have: .../collection/xxx.jpg or .../wishlist/xxx.jpg or .../wall/xxx.jpg
+    !/\/(collection|wishlist|wall)\//.test(c.image)
+  );
+
+  const run = async () => {
+    if (needsMigration.length === 0) { addLog("✅ Nothing to migrate — all images already in folders!"); return; }
+    setState("running");
+    setCount({ done: 0, skip: 0, fail: 0, total: needsMigration.length });
+    const updated = {};
+
+    for (const can of needsMigration) {
+      try {
+        addLog(`⬆️ Moving: ${can.name}…`);
+
+        // 1. Fetch the image
+        const imgRes = await fetch(can.image);
+        if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
+        const blob = await imgRes.blob();
+        const file = new File([blob], `${Date.now()}.jpg`, { type: "image/jpeg" });
+
+        // 2. Upload to collection/ folder
+        const upRes = await fetch("/api/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "image/jpeg",
+            "x-filename": `collection/${Date.now()}.jpg`,
+            "x-canvault-auth": atob(_PH),
+          },
+          body: file,
+        });
+        if (!upRes.ok) throw new Error(`Upload failed: ${upRes.status}`);
+        const { url: newUrl } = await upRes.json();
+
+        // 3. Update Supabase with new URL
+        await db.upsertCan({ ...can, image: newUrl });
+
+        // 4. Delete old blob
+        await deleteFromBlob(can.image);
+
+        updated[can.id] = newUrl;
+        addLog(`✅ Done: ${can.name}`);
+        setCount(c => ({ ...c, done: c.done + 1 }));
+      } catch (err) {
+        addLog(`❌ Failed: ${can.name} — ${err.message}`);
+        setCount(c => ({ ...c, fail: c.fail + 1 }));
+      }
+    }
+
+    setState("done");
+    if (Object.keys(updated).length > 0) onDone(updated);
+  };
+
+  if (needsMigration.length === 0 && state === "idle") return null;
+
+  return (
+    <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px" }}>
+      <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 8 }}>
+        🗂️ BLOB FOLDER MIGRATION
+      </p>
+      {state === "idle" && (
+        <>
+          <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
+            Found <strong>{needsMigration.length}</strong> image{needsMigration.length !== 1 ? "s" : ""} stored in the root of Blob (no folder). This tool moves them into <code style={{ background: T.bgInput, padding: "1px 5px", borderRadius: 4, fontSize: 11 }}>collection/</code> and updates Supabase automatically.
+          </p>
+          <button onClick={run} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
+            ▶ MIGRATE {needsMigration.length} IMAGES
+          </button>
+        </>
+      )}
+      {(state === "running" || state === "done") && (
+        <>
+          <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap" }}>
+            {[["✅ Done", count.done, "#22C55E"], ["❌ Failed", count.fail, "#FF4444"], ["Total", count.total, T.textMuted]].map(([l, v, c]) => (
+              <div key={l} style={{ textAlign: "center" }}>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 900, color: c }}>{v}</div>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {/* Progress bar */}
+          <div style={{ height: 4, background: T.border, borderRadius: 2, marginBottom: 10, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "#22C55E", borderRadius: 2, width: `${((count.done + count.fail) / Math.max(count.total, 1)) * 100}%`, transition: "width 0.3s" }} />
+          </div>
+          <div style={{ maxHeight: 140, overflowY: "auto", background: T.bgInput, borderRadius: 8, padding: "8px 10px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.05em", lineHeight: 1.8 }}>
+            {log.map((l, i) => <div key={i}>{l}</div>)}
+          </div>
+          {state === "done" && <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#22C55E", marginTop: 8, fontStyle: "italic" }}>Migration complete! Refresh the page to see updated images.</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── STATS PAGE ───────────────────────────────────────────────────────────────
 
 function StatsPage({ T }) {
@@ -1665,11 +1794,14 @@ function StatsPage({ T }) {
       </div>
 
       {/* Export */}
-      <div style={{ textAlign: "center", paddingTop: 16, borderTop: `2px dashed ${T.border}` }}>
+      <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
         <button onClick={exportJSON} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "12px 28px", color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 13, letterSpacing: "0.15em", cursor: "pointer" }}>
           💾 EXPORT BACKUP JSON
         </button>
-        <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, marginTop: 8, fontStyle: "italic" }}>Downloads a JSON file with your full collection + wishlist</p>
+        <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Downloads a JSON file with your full collection + wishlist</p>
+
+        {/* Migration tool */}
+        <MigrateBlobTool T={T} cans={cans} onDone={(updated) => setCans(p => p.map(c => updated[c.id] ? { ...c, image: updated[c.id] } : c))} />
       </div>
     </div>
   );
