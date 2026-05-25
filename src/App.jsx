@@ -958,56 +958,99 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
 function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
   const [colors, setColors] = useState({ ...customColors });
   const [newTag, setNewTag] = useState("");
-  const PRESETS = ["#C8102E","#FF6B00","#FFCC00","#22C55E","#00843D","#3B82F6","#004B93","#8B5CF6","#EC4899","#14B8A6","#F97316","#6B7280"];
+  const [newColor, setNewColor] = useState("#C8102E");
+  const [newHex, setNewHex] = useState("#C8102E");
+  const [editHex, setEditHex] = useState({});
+  const PRESETS = ["#C8102E","#FF6B00","#FFCC00","#22C55E","#00843D","#3B82F6","#004B93","#8B5CF6","#EC4899","#14B8A6","#F97316","#888888"];
+  const isValidHex = h => /^#[0-9A-Fa-f]{6}$/.test(h);
 
-  const allKnown = [...new Set([...Object.keys(BRAND_COLORS).filter(k => k !== "default"), ...allTags, ...Object.keys(colors)])].sort();
+  const coloredTags = Object.keys(colors).sort();
+  const builtinTags = Object.keys(BRAND_COLORS).filter(k => k !== "default" && !colors[k]).sort();
+
+  const addTag = () => {
+    const t = newTag.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!t) return;
+    setColors(c => ({ ...c, [t]: newColor }));
+    setNewTag(""); setNewColor("#C8102E"); setNewHex("#C8102E");
+  };
+  const updateColor = (tag, hex) => { if (!isValidHex(hex)) return; setColors(c => ({ ...c, [tag]: hex })); };
+  const removeColor = (tag) => { const c = { ...colors }; delete c[tag]; setColors(c); };
+
+  const HexField = ({ value, onChange }) => {
+    const [raw, setRaw] = useState(value);
+    useEffect(() => setRaw(value), [value]);
+    const v = isValidHex(raw.startsWith("#") ? raw : "#" + raw);
+    return (
+      <input value={raw}
+        onChange={e => { setRaw(e.target.value); const h = e.target.value.startsWith("#") ? e.target.value : "#" + e.target.value; if (isValidHex(h)) onChange(h); }}
+        onBlur={() => { const h = raw.startsWith("#") ? raw : "#" + raw; if (!isValidHex(h)) setRaw(value); }}
+        placeholder="#C8102E" maxLength={7}
+        style={{ width: 82, padding: "5px 8px", background: T.bgCard, border: `1.5px solid ${v ? "#22C55E" : T.border}`, borderRadius: 7, color: T.text, fontFamily: "monospace", fontSize: 12, textAlign: "center" }} />
+    );
+  };
+
+  const Swatches = ({ cur, onPick }) => (
+    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+      {PRESETS.map(c => (
+        <div key={c} onClick={() => onPick(c)} style={{ width: 22, height: 22, borderRadius: "50%", background: c, cursor: "pointer", border: cur === c ? "2px solid #fff" : "2px solid transparent", boxShadow: cur === c ? `0 0 0 2px ${c}` : "none", flexShrink: 0 }} />
+      ))}
+      {/* Native color picker as last swatch */}
+      <label title="Custom color picker" style={{ width: 22, height: 22, borderRadius: "50%", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)", cursor: "pointer", flexShrink: 0, overflow: "hidden", border: "2px solid transparent" }}>
+        <input type="color" value={cur || "#C8102E"} onChange={e => onPick(e.target.value)} style={{ opacity: 0, width: 0, height: 0, position: "absolute" }} />
+      </label>
+    </div>
+  );
 
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Tag Colors</div>
-      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 16px", borderRadius: 2 }} />
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
 
-      {/* Add custom tag */}
-      <div style={{ display: "flex", gap: 7, marginBottom: 14 }}>
-        <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && newTag.trim() && (setColors(c => ({ ...c, [newTag.trim().toLowerCase().replace(/\s+/g,"-")]: "#C8102E" })), setNewTag(""))} placeholder="Add custom tag…"
-          style={{ flex: 1, padding: "9px 12px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
-        <button onClick={() => { const t = newTag.trim().toLowerCase().replace(/\s+/g,"-"); if (t) { setColors(c => ({ ...c, [t]: "#C8102E" })); setNewTag(""); } }} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 14px", color: "#fff", cursor: "pointer", fontSize: 18, fontWeight: 700 }}>+</button>
+      {/* Add section */}
+      <div style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>ADD COLOR TO TAG</p>
+        <div style={{ display: "flex", gap: 7, marginBottom: 10, alignItems: "center" }}>
+          <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && addTag()} placeholder="tag name e.g. monster"
+            style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
+          <div style={{ width: 22, height: 22, borderRadius: "50%", background: newColor, border: "2px solid " + T.border, flexShrink: 0 }} />
+          <HexField value={newHex} onChange={h => { setNewColor(h); setNewHex(h); }} />
+        </div>
+        <Swatches cur={newColor} onPick={c => { setNewColor(c); setNewHex(c); }} />
+        <button onClick={addTag} disabled={!newTag.trim()} style={{ width: "100%", marginTop: 10, padding: "9px", background: newTag.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 8, color: newTag.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: newTag.trim() ? "pointer" : "not-allowed" }}>+ ADD</button>
       </div>
 
-      {/* Tag list */}
-      <div style={{ maxHeight: "50vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-        {allKnown.map(tag => {
-          const current = colors[tag] || BRAND_COLORS[tag] || null;
-          const isBuiltin = !!BRAND_COLORS[tag];
-          return (
-            <div key={tag} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 9 }}>
-              {/* Color dot */}
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: current || T.border, border: `2px solid ${T.border}`, flexShrink: 0 }} />
-              {/* Tag name */}
-              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.text, flex: 1, letterSpacing: "0.05em" }}>
-                #{tag}
-                {isBuiltin && <span style={{ fontFamily: "Georgia,serif", fontSize: 9, color: T.textFaint, marginLeft: 6, fontStyle: "italic" }}>built-in</span>}
-              </span>
-              {/* Preset color swatches */}
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 160 }}>
-                {PRESETS.map(c => (
-                  <div key={c} onClick={() => setColors(cc => ({ ...cc, [tag]: c }))}
-                    style={{ width: 18, height: 18, borderRadius: "50%", background: c, cursor: "pointer", border: colors[tag] === c ? "2px solid #fff" : "2px solid transparent", boxShadow: colors[tag] === c ? `0 0 0 2px ${c}` : "none", transition: "all 0.1s" }} />
-                ))}
-                {/* Native color picker */}
-                <label style={{ width: 18, height: 18, borderRadius: "50%", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)", cursor: "pointer", border: "2px solid transparent", overflow: "hidden", flexShrink: 0 }}>
-                  <input type="color" value={colors[tag] || "#C8102E"} onChange={e => setColors(cc => ({ ...cc, [tag]: e.target.value }))} style={{ opacity: 0, width: 0, height: 0 }} />
-                </label>
-                {/* Remove custom color */}
-                {colors[tag] && (
-                  <button onClick={() => { const c = { ...colors }; delete c[tag]; setColors(c); }}
-                    title="Remove custom color"
-                    style={{ width: 22, height: 22, background: "#FF444422", border: "1.5px solid #FF444466", borderRadius: 4, color: "#FF4444", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
-                )}
+      {/* Custom colored tags */}
+      {coloredTags.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>CUSTOM COLORS</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "28vh", overflowY: "auto" }}>
+            {coloredTags.map(tag => (
+              <div key={tag} style={{ background: T.bgInput, border: `1.5px solid ${colors[tag]}44`, borderLeft: `3px solid ${colors[tag]}`, borderRadius: 9, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: colors[tag], flexShrink: 0, boxShadow: `0 0 0 2px ${colors[tag]}44` }} />
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.text, flex: 1 }}>#{tag}</span>
+                  <HexField value={editHex[tag] || colors[tag]} onChange={h => { updateColor(tag, h); setEditHex(p => ({ ...p, [tag]: h })); }} />
+                  <button onClick={() => removeColor(tag)} style={{ width: 24, height: 24, background: "#FF444422", border: "1.5px solid #FF444466", borderRadius: 5, color: "#FF4444", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+                </div>
+                <Swatches cur={colors[tag]} onPick={c => { updateColor(tag, c); setEditHex(p => ({ ...p, [tag]: c })); }} />
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Built-in brands */}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>BUILT-IN BRANDS <span style={{ fontFamily: "Georgia,serif", fontSize: 9, fontStyle: "italic", letterSpacing: 0, textTransform: "none" }}>— tap to override</span></p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {builtinTags.map(tag => (
+            <div key={tag} onClick={() => { setNewTag(tag); setNewColor(BRAND_COLORS[tag]); setNewHex(BRAND_COLORS[tag]); }}
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "999px", cursor: "pointer" }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: BRAND_COLORS[tag] }} />
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>#{tag}</span>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
       <button onClick={() => { saveCustomColors(colors); onSave(colors); onClose(); }} style={{ width: "100%", padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
@@ -1016,6 +1059,7 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
     </ModalShell>
   );
 }
+
 
 // ─── LOADING SPINNER ──────────────────────────────────────────────────────────
 
