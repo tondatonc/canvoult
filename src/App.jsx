@@ -1284,6 +1284,7 @@ function WishlistPage({ T, isAdmin }) {
   const [sort, setSort] = useState("newest");
   const [viewMode, setViewMode] = useState("grid");
   const [activeTags, setActiveTags] = useState([]);
+  const [activeCountry, setActiveCountry] = useState(null);
   const [modal, setModal] = useState(null);
 
   useEffect(() => {
@@ -1293,9 +1294,16 @@ function WishlistPage({ T, isAdmin }) {
   }, []);
 
   const allTags = [...new Set(wishes.flatMap(w => w.tags))].sort();
-  const sorted = sortCans(wishes.filter(w =>
-    activeTags.length === 0 || activeTags.every(t => w.tags.includes(t))
-  ), sort);
+  const tagCounts = wishes.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
+
+  // All unique countries that have been filled in
+  const allCountries = [...new Set(wishes.map(w => w.country).filter(Boolean))].sort();
+
+  const sorted = sortCans(wishes.filter(w => {
+    const tagMatch = activeTags.length === 0 || activeTags.every(t => w.tags.includes(t));
+    const countryMatch = !activeCountry || w.country === activeCountry;
+    return tagMatch && countryMatch;
+  }), sort);
 
   const saveWish = async w => {
     if (db.isConfigured()) {
@@ -1315,6 +1323,8 @@ function WishlistPage({ T, isAdmin }) {
     setWishes(p => p.filter(w => w.id !== id));
   };
 
+  const activeFilters = activeTags.length + (activeCountry ? 1 : 0);
+
   return (
     <div>
       <div style={{ background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
@@ -1328,26 +1338,64 @@ function WishlistPage({ T, isAdmin }) {
       {loading ? <LoadingSpinner T={T} /> : <>
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} />
 
-      {allTags.length > 0 && (
-        <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>FILTER BY TAG</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>clear</span>}
+      {/* Country filter */}
+      {allCountries.length > 0 && (
+        <div style={{ marginBottom: 10, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>🌍 FILTER BY COUNTRY</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {allCountries.map(country => {
+              const count = wishes.filter(w => w.country === country).length;
+              const active = activeCountry === country;
+              return (
+                <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{
+                  padding: "5px 12px", borderRadius: "999px",
+                  fontFamily: "Georgia, serif", fontSize: 12,
+                  background: active ? "#C8102E" : T.bgCard,
+                  color: active ? "#fff" : T.text,
+                  border: `1.5px solid ${active ? "#C8102E" : T.border}`,
+                  cursor: "pointer", transition: "all 0.15s",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  {country}
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}` }}>
-        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>{wishes.length} ITEMS ON WISHLIST</span>
+      {/* Tag filter */}
+      {allTags.length > 0 && (
+        <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>FILTER BY TAG</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
+            {sorted.length === wishes.length ? `${wishes.length} ITEMS` : `${sorted.length} OF ${wishes.length}`}
+          </span>
+          {activeFilters > 0 && (
+            <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>
+              clear {activeFilters} filter{activeFilters > 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
         {isAdmin && <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD WISH</button>}
       </div>
 
       {sorted.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>⭐</div>
-          <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>No wishes yet</p>
-          {isAdmin && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>Add cans you're hunting for!</p>}
+          <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>
+            {activeFilters > 0 ? `No wishes in ${activeCountry || "selected filters"}` : "No wishes yet"}
+          </p>
+          {isAdmin && activeFilters === 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>Add cans you're hunting for!</p>}
         </div>
       ) : viewMode === "grid" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(155px,1fr))", gap: 16 }}>
@@ -1365,10 +1413,8 @@ function WishlistPage({ T, isAdmin }) {
           onDelete={id => { removeWish(id); setModal(null); }}
           onEdit={() => setModal({ wish: modal.wish, edit: true })}
           onMarkFound={async (wish) => {
-            // Add to collection
             const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, country: wish.country || "", price: "", addedAt: Date.now() };
             if (db.isConfigured()) await db.upsertCan(newCan).catch(console.error);
-            // Remove from wishlist
             removeWish(wish.id);
             setModal(null);
           }}
