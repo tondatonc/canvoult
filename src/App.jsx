@@ -584,13 +584,24 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [image, setImage] = useState(initial.image || null);
   const [note, setNote] = useState(initial.note || "");
   const [price, setPrice] = useState(initial.price || "");
-  const [country, setCountry] = useState(initial.country || "");
+  const [countries, setCountries] = useState(initial.countries || []);
+  const [countryInput, setCountryInput] = useState("");
   const [drag, setDrag] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
   const [cropSrc, setCropSrc] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
   const fileRef = useRef();
+
+
+  const addCountry = () => {
+    const raw = countryInput.trim();
+    if (!raw) return;
+    const resolved = resolveCountry(raw);
+    const display = resolved?.display || raw;
+    if (!countries.includes(display)) setCountries(p => [...p, display]);
+    setCountryInput("");
+  };
 
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
@@ -691,9 +702,22 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
           style={{ width: "100%", padding: "10px 13px", marginBottom: 12, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
       </>}
 
-      <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>COUNTRY OF ORIGIN (optional)</label>
-      <input value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. cze, ger, ita or 🇨🇿 Czech Republic"
-        style={{ width: "100%", padding: "10px 13px", marginBottom: 12, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
+      <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>COUNTRIES (optional)</label>
+      <div style={{ display: "flex", gap: 7, marginBottom: 6 }}>
+        <input value={countryInput} onChange={e => setCountryInput(e.target.value)}
+          onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addCountry())}
+          placeholder="cze, ger, ita or 🇨🇿…"
+          style={{ flex: 1, padding: "10px 13px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
+        <button onClick={addCountry} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 16px", color: "#fff", cursor: "pointer", fontSize: 20, fontWeight: 700 }}>+</button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12, minHeight: 24 }}>
+        {countries.map(c => (
+          <span key={c} style={{ padding: "3px 10px", borderRadius: "999px", fontSize: 11, fontFamily: "Georgia,serif", background: T.bgCard, color: T.text, border: `1.5px solid ${T.border}`, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            {c}
+            <span onClick={() => setCountries(p => p.filter(x => x !== c))} style={{ cursor: "pointer", opacity: 0.6, fontWeight: 900, fontSize: 13 }}>×</span>
+          </span>
+        ))}
+      </div>
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>TAGS</label>
       <div style={{ display: "flex", gap: 7, marginBottom: 8 }}>
@@ -707,7 +731,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
         {tags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setTags(tags.filter(x => x !== t))} />)}
       </div>
 
-      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, price, country, addedAt: initial.addedAt || Date.now() }); }}
+      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, price, countries, addedAt: initial.addedAt || Date.now() }); }}
         disabled={!name.trim()}
         style={{ width: "100%", padding: "13px", background: name.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: name.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: name.trim() ? "pointer" : "not-allowed", boxShadow: name.trim() ? "0 4px 16px #C8102E44" : "none", transition: "all 0.2s" }}>
         {initial.id ? "SAVE CHANGES" : "ADD TO VAULT"}
@@ -723,17 +747,15 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
   const color = getCanColor(can.tags, customColors);
   const [copied, setCopied] = useState(false);
 
-  // Auto-expand 3-letter country code on open and silently save back
+  // Auto-expand any 3-letter country codes in the array on open
   useEffect(() => {
-    if (!can.country) return;
-    const resolved = resolveCountry(can.country);
-    if (resolved && resolved.display !== can.country) {
-      // Has a 3-letter code that was resolved — save expanded version silently
-      onCountryExpanded?.({ ...can, country: resolved.display });
-    }
+    if (!can.countries?.length) return;
+    const expanded = can.countries.map(c => resolveCountry(c)?.display || c);
+    const changed = expanded.some((e, i) => e !== can.countries[i]);
+    if (changed) onCountryExpanded?.({ ...can, countries: expanded });
   }, [can.id]);
 
-  const displayCountry = can.country ? (resolveCountry(can.country)?.display || can.country) : null;
+  const displayCountries = can.countries?.map(c => resolveCountry(c)?.display || c) || [];
 
   const shareUrl = `${window.location.origin}/?can=${can.id}`;
   const handleShare = () => {
@@ -758,7 +780,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
           ADDED {new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}
         </p>
-        {displayCountry && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, marginBottom: 4 }}>{displayCountry}</p>}
+        {displayCountries.length > 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, marginBottom: 4 }}>{displayCountries.join(" · ")}</p>}
         {can.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 11, letterSpacing: "0.1em", marginBottom: 8 }}>💰 {can.price}</p>}
         {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", marginBottom: 12, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginBottom: 18 }}>
@@ -1034,6 +1056,16 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
   const coloredTags = Object.keys(colors).sort();
   const builtinTags = Object.keys(BRAND_COLORS).filter(k => k !== "default" && !colors[k]).sort();
 
+
+  const addCountry = () => {
+    const raw = countryInput.trim();
+    if (!raw) return;
+    const resolved = resolveCountry(raw);
+    const display = resolved?.display || raw;
+    if (!countries.includes(display)) setCountries(p => [...p, display]);
+    setCountryInput("");
+  };
+
   const addTag = () => {
     const t = newTag.trim().toLowerCase().replace(/\s+/g, "-");
     if (!t) return;
@@ -1151,6 +1183,7 @@ function CollectionPage({ T, isAdmin }) {
   const [modal, setModal] = useState(null);
   const [pinned, setPinned] = useState(() => { try { return JSON.parse(localStorage.getItem("cv_pinned") || "[]"); } catch { return []; } });
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
+  const [activeCountry, setActiveCountry] = useState(null);
 
   useEffect(() => { localStorage.setItem("cv_pinned", JSON.stringify(pinned)); }, [pinned]);
 
@@ -1174,11 +1207,14 @@ function CollectionPage({ T, isAdmin }) {
 
   const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const allTags = [...new Set(cans.flatMap(c => c.tags))].sort();
+  const allCountries = [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort();
 
   const baseFiltered = cans.filter(can => {
     const s = search.toLowerCase();
-    return (!s || can.name.toLowerCase().includes(s) || can.tags.some(t => t.includes(s))) &&
-      (activeTags.length === 0 || activeTags.every(t => can.tags.includes(t)));
+    const matchSearch = (!s || can.name.toLowerCase().includes(s) || can.tags.some(t => t.includes(s)));
+    const matchTags = activeTags.length === 0 || activeTags.every(t => can.tags.includes(t));
+    const matchCountry = !activeCountry || (can.countries || []).includes(activeCountry);
+    return matchSearch && matchTags && matchCountry;
   });
 
   // Pinned cans always first
@@ -1241,10 +1277,33 @@ function CollectionPage({ T, isAdmin }) {
       {/* Sort + view */}
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} />
 
+      {/* Country filter */}
+      {allCountries.length > 0 && (
+        <div style={{ marginBottom: 10, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>🌍 FILTER BY COUNTRY</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {allCountries.map(country => {
+              const count = cans.filter(c => (c.countries || []).includes(country)).length;
+              const active = activeCountry === country;
+              return (
+                <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{ padding: "5px 12px", borderRadius: "999px", fontFamily: "Georgia, serif", fontSize: 12, background: active ? "#C8102E" : T.bgCard, color: active ? "#fff" : T.text, border: `1.5px solid ${active ? "#C8102E" : T.border}`, cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}>
+                  {country}
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Stats + Add */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
           {allFiltered.length === cans.length ? `${cans.length} CANS IN VAULT` : `SHOWING ${allFiltered.length} OF ${cans.length}`}
+        </span>
+        {(activeTags.length > 0 || activeCountry) && (
+          <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>clear filters</button>
+        )}
         </span>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {cans.length > 0 && (
@@ -1286,7 +1345,6 @@ function CollectionPage({ T, isAdmin }) {
           onEdit={() => setModal({ can: modal.can, edit: true })}
           onDuplicate={can => { saveCan({ ...can, id: Date.now().toString(), name: can.name + " (copy)", addedAt: Date.now() }); setModal(null); }}
           onCountryExpanded={async updated => {
-            // Silently update the country field in DB and local state
             if (db.isConfigured()) await db.upsertCan(updated).catch(console.error);
             setCans(p => p.map(c => c.id === updated.id ? updated : c));
           }}
@@ -1369,11 +1427,11 @@ function WishlistPage({ T, isAdmin }) {
   const tagCounts = wishes.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
 
   // All unique countries that have been filled in
-  const allCountries = [...new Set(wishes.map(w => w.country).filter(Boolean))].sort();
+  const allCountries = [...new Set(wishes.flatMap(w => w.countries || []).filter(Boolean))].sort();
 
   const sorted = sortCans(wishes.filter(w => {
     const tagMatch = activeTags.length === 0 || activeTags.every(t => w.tags.includes(t));
-    const countryMatch = !activeCountry || w.country === activeCountry;
+    const countryMatch = !activeCountry || (w.countries || []).includes(activeCountry);
     return tagMatch && countryMatch;
   }), sort);
 
@@ -1416,7 +1474,7 @@ function WishlistPage({ T, isAdmin }) {
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>🌍 FILTER BY COUNTRY</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
-              const count = wishes.filter(w => w.country === country).length;
+              const count = wishes.filter(w => (w.countries || []).includes(country)).length;
               const active = activeCountry === country;
               return (
                 <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{
@@ -1489,7 +1547,7 @@ function WishlistPage({ T, isAdmin }) {
             setWishes(p => p.map(w => w.id === updated.id ? updated : w));
           }}
           onMarkFound={async (wish) => {
-            const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, country: wish.country || "", price: "", addedAt: Date.now() };
+            const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, countries: wish.countries || [], price: "", addedAt: Date.now() };
             if (db.isConfigured()) await db.upsertCan(newCan).catch(console.error);
             removeWish(wish.id);
             setModal(null);
@@ -1547,14 +1605,13 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
   const color = getCanColor(wish.tags);
 
   useEffect(() => {
-    if (!wish.country) return;
-    const resolved = resolveCountry(wish.country);
-    if (resolved && resolved.display !== wish.country) {
-      onCountryExpanded?.({ ...wish, country: resolved.display });
-    }
+    if (!wish.countries?.length) return;
+    const expanded = wish.countries.map(c => resolveCountry(c)?.display || c);
+    const changed = expanded.some((e, i) => e !== wish.countries[i]);
+    if (changed) onCountryExpanded?.({ ...wish, countries: expanded });
   }, [wish.id]);
 
-  const displayCountry = wish.country ? (resolveCountry(wish.country)?.display || wish.country) : null;
+  const displayCountries = wish.countries?.map(c => resolveCountry(c)?.display || c) || [];
 
   return (
     <ModalShell onClose={onClose} T={T}>
@@ -1565,7 +1622,7 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 22, padding: "4px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
         {wish.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 12, letterSpacing: "0.1em", margin: "6px 0" }}>💰 {wish.price}</p>}
-        {displayCountry && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, margin: "4px 0" }}>{displayCountry}</p>}
+        {displayCountries.length > 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, margin: "4px 0" }}>{displayCountries.join(" · ")}</p>}
         {wish.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", margin: "10px 0", padding: "8px 14px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{wish.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginTop: 10, marginBottom: 16 }}>
           {wish.tags.map(t => <TagPill key={t} tag={t} T={T} />)}

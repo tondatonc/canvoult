@@ -44,7 +44,7 @@ export async function upsertCan(can) {
       tags: can.tags,
       note: can.note || null,
       price: can.price || null,
-      country: can.country || null,
+      countries: can.countries || [],
       added_at: new Date(can.addedAt).toISOString(),
     }),
   });
@@ -76,7 +76,7 @@ export async function upsertWish(wish) {
       tags: wish.tags,
       note: wish.note || null,
       price: wish.price || null,
-      country: wish.country || null,
+      countries: wish.countries || [],
       added_at: new Date(wish.addedAt).toISOString(),
     }),
   });
@@ -126,7 +126,7 @@ export const rowToCan = r => ({
   tags: r.tags || [],
   note: r.note || "",
   price: r.price || "",
-  country: r.country || "",
+  countries: r.countries || [],
   addedAt: new Date(r.added_at).getTime(),
 });
 
@@ -137,7 +137,7 @@ export const rowToWish = r => ({
   tags: r.tags || [],
   note: r.note || "",
   price: r.price || "",
-  country: r.country || "",
+  countries: r.countries || [],
   addedAt: new Date(r.added_at).getTime(),
 });
 
