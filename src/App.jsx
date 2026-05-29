@@ -1304,7 +1304,6 @@ function CollectionPage({ T, isAdmin }) {
         {(activeTags.length > 0 || activeCountry) && (
           <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>clear filters</button>
         )}
-        </span>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {cans.length > 0 && (
             <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🎲 RANDOM</button>
