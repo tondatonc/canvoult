@@ -2,6 +2,61 @@ import { useState, useEffect, useRef } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
 
+// ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
+const COUNTRY_MAP = {
+  // ISO 3166-1 alpha-3 → { flag, name }
+  afg: { f: "🇦🇫", n: "Afghanistan" }, alb: { f: "🇦🇱", n: "Albania" },
+  and: { f: "🇦🇩", n: "Andorra" }, are: { f: "🇦🇪", n: "UAE" },
+  arg: { f: "🇦🇷", n: "Argentina" }, arm: { f: "🇦🇲", n: "Armenia" },
+  aus: { f: "🇦🇺", n: "Australia" }, aut: { f: "🇦🇹", n: "Austria" },
+  aze: { f: "🇦🇿", n: "Azerbaijan" }, bel: { f: "🇧🇪", n: "Belgium" },
+  bgr: { f: "🇧🇬", n: "Bulgaria" }, bih: { f: "🇧🇦", n: "Bosnia" },
+  blr: { f: "🇧🇾", n: "Belarus" }, bra: { f: "🇧🇷", n: "Brazil" },
+  can: { f: "🇨🇦", n: "Canada" }, che: { f: "🇨🇭", n: "Switzerland" },
+  chl: { f: "🇨🇱", n: "Chile" }, chn: { f: "🇨🇳", n: "China" },
+  col: { f: "🇨🇴", n: "Colombia" }, hrv: { f: "🇭🇷", n: "Croatia" },
+  cze: { f: "🇨🇿", n: "Czech Republic" }, dnk: { f: "🇩🇰", n: "Denmark" },
+  egy: { f: "🇪🇬", n: "Egypt" }, esp: { f: "🇪🇸", n: "Spain" },
+  est: { f: "🇪🇪", n: "Estonia" }, fin: { f: "🇫🇮", n: "Finland" },
+  fra: { f: "🇫🇷", n: "France" }, gbr: { f: "🇬🇧", n: "UK" },
+  geo: { f: "🇬🇪", n: "Georgia" }, ger: { f: "🇩🇪", n: "Germany" },
+  deu: { f: "🇩🇪", n: "Germany" }, grc: { f: "🇬🇷", n: "Greece" },
+  hkg: { f: "🇭🇰", n: "Hong Kong" }, hun: { f: "🇭🇺", n: "Hungary" },
+  idn: { f: "🇮🇩", n: "Indonesia" }, ind: { f: "🇮🇳", n: "India" },
+  irl: { f: "🇮🇪", n: "Ireland" }, irn: { f: "🇮🇷", n: "Iran" },
+  isr: { f: "🇮🇱", n: "Israel" }, ita: { f: "🇮🇹", n: "Italy" },
+  jpn: { f: "🇯🇵", n: "Japan" }, kaz: { f: "🇰🇿", n: "Kazakhstan" },
+  kor: { f: "🇰🇷", n: "South Korea" }, ltu: { f: "🇱🇹", n: "Lithuania" },
+  lux: { f: "🇱🇺", n: "Luxembourg" }, lva: { f: "🇱🇻", n: "Latvia" },
+  mex: { f: "🇲🇽", n: "Mexico" }, mda: { f: "🇲🇩", n: "Moldova" },
+  mkd: { f: "🇲🇰", n: "North Macedonia" }, mlt: { f: "🇲🇹", n: "Malta" },
+  mng: { f: "🇲🇳", n: "Mongolia" }, mne: { f: "🇲🇪", n: "Montenegro" },
+  nld: { f: "🇳🇱", n: "Netherlands" }, nor: { f: "🇳🇴", n: "Norway" },
+  nzl: { f: "🇳🇿", n: "New Zealand" }, pol: { f: "🇵🇱", n: "Poland" },
+  prt: { f: "🇵🇹", n: "Portugal" }, rou: { f: "🇷🇴", n: "Romania" },
+  rus: { f: "🇷🇺", n: "Russia" }, sau: { f: "🇸🇦", n: "Saudi Arabia" },
+  srb: { f: "🇷🇸", n: "Serbia" }, svk: { f: "🇸🇰", n: "Slovakia" },
+  svn: { f: "🇸🇮", n: "Slovenia" }, swe: { f: "🇸🇪", n: "Sweden" },
+  tha: { f: "🇹🇭", n: "Thailand" }, tur: { f: "🇹🇷", n: "Turkey" },
+  twn: { f: "🇹🇼", n: "Taiwan" }, ukr: { f: "🇺🇦", n: "Ukraine" },
+  usa: { f: "🇺🇸", n: "USA" }, uzb: { f: "🇺🇿", n: "Uzbekistan" },
+  vnm: { f: "🇻🇳", n: "Vietnam" }, zaf: { f: "🇿🇦", n: "South Africa" },
+};
+
+// Resolves a raw country string to { flag, name, display }
+// Accepts: "cze", "CZE", "Czech Republic", "🇨🇿 Czech Republic"
+function resolveCountry(raw) {
+  if (!raw) return null;
+  const stripped = raw.trim();
+  // Already has a flag emoji — pass through
+  if (/^\p{Emoji_Presentation}/u.test(stripped)) return { display: stripped, name: stripped };
+  const key = stripped.toLowerCase().replace(/[^a-z]/g, "");
+  const match = COUNTRY_MAP[key];
+  if (match) return { display: `${match.f} ${match.n}`, name: match.n, flag: match.f };
+  // Unknown code — return as-is
+  return { display: stripped, name: stripped };
+}
+
 const _PH = "c29kYWNhbjEyMw==";
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
@@ -637,7 +692,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
       </>}
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>COUNTRY OF ORIGIN (optional)</label>
-      <input value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. 🇨🇿 Czech Republic"
+      <input value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. cze, ger, ita or 🇨🇿 Czech Republic"
         style={{ width: "100%", padding: "10px 13px", marginBottom: 12, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>TAGS</label>
@@ -664,9 +719,21 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
 
 // ─── DETAIL MODAL ─────────────────────────────────────────────────────────────
 
-function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {} }) {
+function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {}, onCountryExpanded }) {
   const color = getCanColor(can.tags, customColors);
   const [copied, setCopied] = useState(false);
+
+  // Auto-expand 3-letter country code on open and silently save back
+  useEffect(() => {
+    if (!can.country) return;
+    const resolved = resolveCountry(can.country);
+    if (resolved && resolved.display !== can.country) {
+      // Has a 3-letter code that was resolved — save expanded version silently
+      onCountryExpanded?.({ ...can, country: resolved.display });
+    }
+  }, [can.id]);
+
+  const displayCountry = can.country ? (resolveCountry(can.country)?.display || can.country) : null;
 
   const shareUrl = `${window.location.origin}/?can=${can.id}`;
   const handleShare = () => {
@@ -691,7 +758,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
           ADDED {new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}
         </p>
-        {can.country && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, marginBottom: 4 }}>{can.country}</p>}
+        {displayCountry && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, marginBottom: 4 }}>{displayCountry}</p>}
         {can.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 11, letterSpacing: "0.1em", marginBottom: 8 }}>💰 {can.price}</p>}
         {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", marginBottom: 12, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginBottom: 18 }}>
@@ -1218,6 +1285,11 @@ function CollectionPage({ T, isAdmin }) {
           onDelete={id => { removeCan(id); setModal(null); }}
           onEdit={() => setModal({ can: modal.can, edit: true })}
           onDuplicate={can => { saveCan({ ...can, id: Date.now().toString(), name: can.name + " (copy)", addedAt: Date.now() }); setModal(null); }}
+          onCountryExpanded={async updated => {
+            // Silently update the country field in DB and local state
+            if (db.isConfigured()) await db.upsertCan(updated).catch(console.error);
+            setCans(p => p.map(c => c.id === updated.id ? updated : c));
+          }}
           onClose={() => setModal(null)} />
       )}
       {modal?.can && modal.edit && (
@@ -1412,6 +1484,10 @@ function WishlistPage({ T, isAdmin }) {
         <WishDetailModal T={T} wish={modal.wish} isAdmin={isAdmin}
           onDelete={id => { removeWish(id); setModal(null); }}
           onEdit={() => setModal({ wish: modal.wish, edit: true })}
+          onCountryExpanded={async updated => {
+            if (db.isConfigured()) await db.upsertWish(updated).catch(console.error);
+            setWishes(p => p.map(w => w.id === updated.id ? updated : w));
+          }}
           onMarkFound={async (wish) => {
             const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, country: wish.country || "", price: "", addedAt: Date.now() };
             if (db.isConfigured()) await db.upsertCan(newCan).catch(console.error);
@@ -1467,8 +1543,19 @@ function WishTileCard({ wish, i, T, onClick }) {
   );
 }
 
-function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFound }) {
+function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFound, onCountryExpanded }) {
   const color = getCanColor(wish.tags);
+
+  useEffect(() => {
+    if (!wish.country) return;
+    const resolved = resolveCountry(wish.country);
+    if (resolved && resolved.display !== wish.country) {
+      onCountryExpanded?.({ ...wish, country: resolved.display });
+    }
+  }, [wish.id]);
+
+  const displayCountry = wish.country ? (resolveCountry(wish.country)?.display || wish.country) : null;
+
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
@@ -1478,7 +1565,7 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 22, padding: "4px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
         {wish.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 12, letterSpacing: "0.1em", margin: "6px 0" }}>💰 {wish.price}</p>}
-        {wish.country && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, margin: "4px 0" }}>{wish.country}</p>}
+        {displayCountry && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, margin: "4px 0" }}>{displayCountry}</p>}
         {wish.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", margin: "10px 0", padding: "8px 14px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{wish.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginTop: 10, marginBottom: 16 }}>
           {wish.tags.map(t => <TagPill key={t} tag={t} T={T} />)}
