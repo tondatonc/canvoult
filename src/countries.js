@@ -75,12 +75,19 @@ export const ALL_COUNTRIES = C;
 export function resolveCountry(raw) {
   if (!raw?.trim()) return null;
   const stripped = raw.trim();
-  const key = stripped.toLowerCase().replace(/[^a-z]/g, "").slice(0, 3);
-  const match = C[key];
-  if (match) return { iso2: match[0], name: match[1] };
-  // Match by full name (case-insensitive)
+  // 1. Exact 3-letter code match (most reliable)
+  const exactKey = stripped.toLowerCase().replace(/[^a-z]/g, "");
+  if (exactKey.length === 3 && C[exactKey]) {
+    return { iso2: C[exactKey][0], name: C[exactKey][1] };
+  }
+  // 2. Match by full name (case-insensitive) — must come before truncation
   const byName = Object.values(C).find(v => v[1].toLowerCase() === stripped.toLowerCase());
   if (byName) return { iso2: byName[0], name: byName[1] };
+  // 3. Partial match only if input is short (1-3 chars typed as code)
+  if (exactKey.length <= 3) {
+    const partial = C[exactKey.slice(0, 3)];
+    if (partial) return { iso2: partial[0], name: partial[1] };
+  }
   return { iso2: null, name: stripped };
 }
 
