@@ -1,64 +1,87 @@
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
+import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
-const COUNTRY_MAP = {
-  // ISO 3166-1 alpha-3 → { flag, name }
-  afg: { f: "🇦🇫", n: "Afghanistan" }, alb: { f: "🇦🇱", n: "Albania" },
-  and: { f: "🇦🇩", n: "Andorra" }, are: { f: "🇦🇪", n: "UAE" },
-  arg: { f: "🇦🇷", n: "Argentina" }, arm: { f: "🇦🇲", n: "Armenia" },
-  aus: { f: "🇦🇺", n: "Australia" }, aut: { f: "🇦🇹", n: "Austria" },
-  aze: { f: "🇦🇿", n: "Azerbaijan" }, bel: { f: "🇧🇪", n: "Belgium" },
-  bgr: { f: "🇧🇬", n: "Bulgaria" }, bih: { f: "🇧🇦", n: "Bosnia" },
-  blr: { f: "🇧🇾", n: "Belarus" }, bra: { f: "🇧🇷", n: "Brazil" },
-  can: { f: "🇨🇦", n: "Canada" }, che: { f: "🇨🇭", n: "Switzerland" },
-  chl: { f: "🇨🇱", n: "Chile" }, chn: { f: "🇨🇳", n: "China" },
-  col: { f: "🇨🇴", n: "Colombia" }, hrv: { f: "🇭🇷", n: "Croatia" },
-  cze: { f: "🇨🇿", n: "Czech Republic" }, dnk: { f: "🇩🇰", n: "Denmark" },
-  egy: { f: "🇪🇬", n: "Egypt" }, esp: { f: "🇪🇸", n: "Spain" },
-  est: { f: "🇪🇪", n: "Estonia" }, fin: { f: "🇫🇮", n: "Finland" },
-  fra: { f: "🇫🇷", n: "France" }, gbr: { f: "🇬🇧", n: "UK" },
-  geo: { f: "🇬🇪", n: "Georgia" }, ger: { f: "🇩🇪", n: "Germany" },
-  deu: { f: "🇩🇪", n: "Germany" }, grc: { f: "🇬🇷", n: "Greece" },
-  hkg: { f: "🇭🇰", n: "Hong Kong" }, hun: { f: "🇭🇺", n: "Hungary" },
-  idn: { f: "🇮🇩", n: "Indonesia" }, ind: { f: "🇮🇳", n: "India" },
-  irl: { f: "🇮🇪", n: "Ireland" }, irn: { f: "🇮🇷", n: "Iran" },
-  isr: { f: "🇮🇱", n: "Israel" }, ita: { f: "🇮🇹", n: "Italy" },
-  jpn: { f: "🇯🇵", n: "Japan" }, kaz: { f: "🇰🇿", n: "Kazakhstan" },
-  kor: { f: "🇰🇷", n: "South Korea" }, ltu: { f: "🇱🇹", n: "Lithuania" },
-  lux: { f: "🇱🇺", n: "Luxembourg" }, lva: { f: "🇱🇻", n: "Latvia" },
-  mex: { f: "🇲🇽", n: "Mexico" }, mda: { f: "🇲🇩", n: "Moldova" },
-  mkd: { f: "🇲🇰", n: "North Macedonia" }, mlt: { f: "🇲🇹", n: "Malta" },
-  mng: { f: "🇲🇳", n: "Mongolia" }, mne: { f: "🇲🇪", n: "Montenegro" },
-  nld: { f: "🇳🇱", n: "Netherlands" }, nor: { f: "🇳🇴", n: "Norway" },
-  nzl: { f: "🇳🇿", n: "New Zealand" }, pol: { f: "🇵🇱", n: "Poland" },
-  prt: { f: "🇵🇹", n: "Portugal" }, rou: { f: "🇷🇴", n: "Romania" },
-  rus: { f: "🇷🇺", n: "Russia" }, sau: { f: "🇸🇦", n: "Saudi Arabia" },
-  srb: { f: "🇷🇸", n: "Serbia" }, svk: { f: "🇸🇰", n: "Slovakia" },
-  svn: { f: "🇸🇮", n: "Slovenia" }, swe: { f: "🇸🇪", n: "Sweden" },
-  tha: { f: "🇹🇭", n: "Thailand" }, tur: { f: "🇹🇷", n: "Turkey" },
-  twn: { f: "🇹🇼", n: "Taiwan" }, ukr: { f: "🇺🇦", n: "Ukraine" },
-  usa: { f: "🇺🇸", n: "USA" }, uzb: { f: "🇺🇿", n: "Uzbekistan" },
-  vnm: { f: "🇻🇳", n: "Vietnam" }, zaf: { f: "🇿🇦", n: "South Africa" },
-};
 
-// Resolves a raw country string to { flag, name, display }
-// Accepts: "cze", "CZE", "Czech Republic", "🇨🇿 Czech Republic"
-function resolveCountry(raw) {
-  if (!raw) return null;
-  const stripped = raw.trim();
-  // Already has a flag emoji — pass through
-  if (/^\p{Emoji_Presentation}/u.test(stripped)) return { display: stripped, name: stripped };
-  const key = stripped.toLowerCase().replace(/[^a-z]/g, "");
-  const match = COUNTRY_MAP[key];
-  if (match) return { display: `${match.f} ${match.n}`, name: match.n, flag: match.f };
-  // Unknown code — return as-is
-  return { display: stripped, name: stripped };
-}
 
 const _PH = "c29kYWNhbjEyMw==";
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
+
+function FlagImg({ iso2, name }) {
+  if (!iso2) return null;
+  return <img src={flagUrl(iso2)} alt={name} title={name} style={{ width: 20, height: 15, borderRadius: 2, verticalAlign: "middle", marginRight: 5, flexShrink: 0, boxShadow: "0 1px 3px #00000033" }} />;
+}
+
+function CountryInput({ value, onChange, T, placeholder = "cze, ger, fra…" }) {
+  const [input, setInput] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [focused, setFocused] = useState(false);
+  const ref = useRef();
+
+  const getSuggestions = (q) => {
+    if (!q.trim()) return setSuggestions([]);
+    const low = q.toLowerCase();
+    setSuggestions(
+      COUNTRY_LIST.filter(c =>
+        c.name.toLowerCase().startsWith(low) ||
+        Object.keys(ALL_COUNTRIES).some(k => k.startsWith(low.slice(0,3)) && ALL_COUNTRIES[k][1] === c.name)
+      ).slice(0, 6)
+    );
+  };
+
+  const add = (nameOrRaw) => {
+    const rc = resolveCountry(nameOrRaw);
+    const name = rc?.name || nameOrRaw.trim();
+    if (name && !value.includes(name)) onChange([...value, name]);
+    setInput(""); setSuggestions([]);
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ display: "flex", gap: 7, marginBottom: 6 }}>
+        <input ref={ref} value={input}
+          onChange={e => { setInput(e.target.value); getSuggestions(e.target.value); }}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); if (input.trim()) add(input); } if (e.key === "Escape") setSuggestions([]); }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+          placeholder={placeholder}
+          style={{ flex: 1, padding: "10px 13px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }}
+        />
+        <button onClick={() => { if (input.trim()) add(input); }} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 16px", color: "#fff", cursor: "pointer", fontSize: 20, fontWeight: 700 }}>+</button>
+      </div>
+      {/* Autocomplete dropdown */}
+      {suggestions.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 46, background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 10, zIndex: 50, overflow: "hidden", boxShadow: "0 8px 24px #00000044" }}>
+          {suggestions.map(c => (
+            <div key={c.name} onMouseDown={() => add(c.name)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer", borderBottom: `1px solid ${T.border}`, transition: "background 0.1s" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#C8102E22"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <FlagImg iso2={c.iso2} name={c.name} />
+              <span style={{ fontFamily: "Georgia,serif", fontSize: 13, color: T.text }}>{c.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Selected countries */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, minHeight: 24 }}>
+        {value.map(c => {
+          const rc = resolveCountry(c);
+          return (
+            <span key={c} style={{ padding: "3px 10px", borderRadius: "999px", fontSize: 11, fontFamily: "Georgia,serif", background: T.bgCard, color: T.text, border: `1.5px solid ${T.border}`, display: "inline-flex", alignItems: "center", gap: 4 }}>
+              {rc?.iso2 && <FlagImg iso2={rc.iso2} name={rc.name} />}
+              {rc?.name || c}
+              <span onClick={() => onChange(value.filter(x => x !== c))} style={{ cursor: "pointer", opacity: 0.6, fontWeight: 900, fontSize: 13 }}>×</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 
 const SAMPLE_CANS = [
   { id: "1", name: "Coca-Cola Classic", image: null, tags: ["coca-cola", "330ml", "cola", "classic"], addedAt: Date.now() - 86400000 * 10 },
@@ -585,7 +608,6 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [note, setNote] = useState(initial.note || "");
   const [price, setPrice] = useState(initial.price || "");
   const [countries, setCountries] = useState(initial.countries || []);
-  const [countryInput, setCountryInput] = useState("");
   const [drag, setDrag] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
@@ -594,14 +616,6 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const fileRef = useRef();
 
 
-  const addCountry = () => {
-    const raw = countryInput.trim();
-    if (!raw) return;
-    const resolved = resolveCountry(raw);
-    const display = resolved?.display || raw;
-    if (!countries.includes(display)) setCountries(p => [...p, display]);
-    setCountryInput("");
-  };
 
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
@@ -703,20 +717,8 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
       </>}
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>COUNTRIES (optional)</label>
-      <div style={{ display: "flex", gap: 7, marginBottom: 6 }}>
-        <input value={countryInput} onChange={e => setCountryInput(e.target.value)}
-          onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addCountry())}
-          placeholder="cze, ger, ita or 🇨🇿…"
-          style={{ flex: 1, padding: "10px 13px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
-        <button onClick={addCountry} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 16px", color: "#fff", cursor: "pointer", fontSize: 20, fontWeight: 700 }}>+</button>
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12, minHeight: 24 }}>
-        {countries.map(c => (
-          <span key={c} style={{ padding: "3px 10px", borderRadius: "999px", fontSize: 11, fontFamily: "Georgia,serif", background: T.bgCard, color: T.text, border: `1.5px solid ${T.border}`, display: "inline-flex", alignItems: "center", gap: 4 }}>
-            {c}
-            <span onClick={() => setCountries(p => p.filter(x => x !== c))} style={{ cursor: "pointer", opacity: 0.6, fontWeight: 900, fontSize: 13 }}>×</span>
-          </span>
-        ))}
+      <div style={{ marginBottom: 12 }}>
+        <CountryInput value={countries} onChange={setCountries} T={T} />
       </div>
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>TAGS</label>
@@ -750,12 +752,12 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
   // Auto-expand any 3-letter country codes in the array on open
   useEffect(() => {
     if (!can.countries?.length) return;
-    const expanded = can.countries.map(c => resolveCountry(c)?.display || c);
+    const expanded = can.countries.map(c => resolveCountry(c)?.name || c);
     const changed = expanded.some((e, i) => e !== can.countries[i]);
     if (changed) onCountryExpanded?.({ ...can, countries: expanded });
   }, [can.id]);
 
-  const displayCountries = can.countries?.map(c => resolveCountry(c)?.display || c) || [];
+  const resolvedCountries = can.countries?.map(c => resolveCountry(c)).filter(Boolean) || [];
 
   const shareUrl = `${window.location.origin}/?can=${can.id}`;
   const handleShare = () => {
@@ -780,7 +782,15 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
           ADDED {new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}
         </p>
-        {displayCountries.length > 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, marginBottom: 4 }}>{displayCountries.join(" · ")}</p>}
+        {resolvedCountries.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
+            {resolvedCountries.map((rc, i) => (
+              <span key={i} style={{ display: "inline-flex", alignItems: "center", fontFamily: "Georgia,serif", fontSize: 12, color: T.textMuted }}>
+                <FlagImg iso2={rc.iso2} name={rc.name} />{rc.name}
+              </span>
+            ))}
+          </div>
+        )}
         {can.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 11, letterSpacing: "0.1em", marginBottom: 8 }}>💰 {can.price}</p>}
         {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", marginBottom: 12, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginBottom: 18 }}>
@@ -1057,14 +1067,6 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
   const builtinTags = Object.keys(BRAND_COLORS).filter(k => k !== "default" && !colors[k]).sort();
 
 
-  const addCountry = () => {
-    const raw = countryInput.trim();
-    if (!raw) return;
-    const resolved = resolveCountry(raw);
-    const display = resolved?.display || raw;
-    if (!countries.includes(display)) setCountries(p => [...p, display]);
-    setCountryInput("");
-  };
 
   const addTag = () => {
     const t = newTag.trim().toLowerCase().replace(/\s+/g, "-");
@@ -1286,7 +1288,8 @@ function CollectionPage({ T, isAdmin }) {
               const count = cans.filter(c => (c.countries || []).includes(country)).length;
               const active = activeCountry === country;
               return (
-                <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{ padding: "5px 12px", borderRadius: "999px", fontFamily: "Georgia, serif", fontSize: 12, background: active ? "#C8102E" : T.bgCard, color: active ? "#fff" : T.text, border: `1.5px solid ${active ? "#C8102E" : T.border}`, cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}>
+                <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{ padding: "5px 12px", borderRadius: "999px", fontFamily: "Georgia, serif", fontSize: 12, background: active ? "#C8102E" : T.bgCard, color: active ? "#fff" : T.text, border: `1.5px solid ${active ? "#C8102E" : T.border}`, cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 5 }}>
+                  {(() => { const rc = resolveCountry(country); return rc?.iso2 ? <FlagImg iso2={rc.iso2} name={rc.name} /> : null; })()}
                   {country}
                   <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
                 </button>
@@ -1605,12 +1608,12 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
 
   useEffect(() => {
     if (!wish.countries?.length) return;
-    const expanded = wish.countries.map(c => resolveCountry(c)?.display || c);
+    const expanded = wish.countries.map(c => resolveCountry(c)?.name || c);
     const changed = expanded.some((e, i) => e !== wish.countries[i]);
     if (changed) onCountryExpanded?.({ ...wish, countries: expanded });
   }, [wish.id]);
 
-  const displayCountries = wish.countries?.map(c => resolveCountry(c)?.display || c) || [];
+  const resolvedCountries = wish.countries?.map(c => resolveCountry(c)).filter(Boolean) || [];
 
   return (
     <ModalShell onClose={onClose} T={T}>
@@ -1621,7 +1624,15 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 22, padding: "4px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
         {wish.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 12, letterSpacing: "0.1em", margin: "6px 0" }}>💰 {wish.price}</p>}
-        {displayCountries.length > 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, margin: "4px 0" }}>{displayCountries.join(" · ")}</p>}
+        {resolvedCountries.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
+            {resolvedCountries.map((rc, i) => (
+              <span key={i} style={{ display: "inline-flex", alignItems: "center", fontFamily: "Georgia,serif", fontSize: 12, color: T.textMuted }}>
+                <FlagImg iso2={rc.iso2} name={rc.name} />{rc.name}
+              </span>
+            ))}
+          </div>
+        )}
         {wish.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", margin: "10px 0", padding: "8px 14px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{wish.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginTop: 10, marginBottom: 16 }}>
           {wish.tags.map(t => <TagPill key={t} tag={t} T={T} />)}
