@@ -2071,6 +2071,7 @@ function StatsPage({ T }) {
 
 export default function App() {
   const [dark, setDark] = useState(false);
+  const [cz, setCz] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -2092,11 +2093,76 @@ export default function App() {
       : "repeating-linear-gradient(180deg,#FFF5E6 0px,#FFF5E6 24px,#FFF0DC 24px,#FFF0DC 48px)",
   };
 
+  // All UI strings — switch between EN and CZ
+  const L = cz ? {
+    collection: "Sbírka", wishlist: "Přání", canwall: "Stěna", stats: "Statistiky",
+    collectionTitle: "Sbírka plechovek", wishlistTitle: "Přání", canwallTitle: "Stěna plechovek", statsTitle: "Statistiky",
+    collectionSub: "Kolekce plechovek", tagline: "KAŽDÁ PLECHOVKA MÁ PŘÍBĚH",
+    signIn: "🔐 Přihlásit", signOut: "Odhlásit",
+    addCan: "+ Přidat", bulk: "📦 Hromadně", colors: "🎨 Barvy",
+    random: "🎲 Náhodná", filterTag: "FILTROVAT DLE ŠTÍTKU", filterCountry: "🌍 FILTROVAT DLE ZEMĚ",
+    clearFilters: "zrušit filtry", cansInVault: (n) => `${n} PLECHOVEK VE SBÍRCE`,
+    showingOf: (n, t) => `ZOBRAZENO ${n} Z ${t}`,
+    noCansFound: "Žádné plechovky nenalezeny",
+    wishlistSub: "PLECHOVKY, KTERÉ CHCI NAJÍT",
+    addWish: "+ Přidat přání", noWishes: "Žádná přání", noWishesHint: "Přidej plechovky, které hledáš!",
+    markFound: "✅ Mám ji!", edit: "Upravit", remove: "Odstranit", copy: "📋 Kopírovat", share: "🔗 Sdílet",
+    linkCopied: "✅ Odkaz zkopírován!",
+    addCanTitle: "Přidat plechovku", editCanTitle: "Upravit",
+    saveChanges: "ULOŽIT ZMĚNY", addToVault: "PŘIDAT DO SBÍRKY",
+    canName: "NÁZEV PLECHOVKY", tags: "ŠTÍTKY", note: "POZNÁMKA", price: "CENA", countries: "ZEMĚ",
+    tapToUpload: "Klepni pro nahrání fotky", changeRecrop: "✂️ ZMĚNIT A OŘÍZNOUT",
+    addWishTitle: "Přidat přání", canWallSub: "FOTKY POLICE A STĚNY",
+    addPhoto: "+ Přidat foto", uploadFirst: "NAHRÁT PRVNÍ FOTO",
+    addPhotoTitle: "Přidat foto na stěnu", caption: "POPIS (volitelný)", addToWall: "PŘIDAT NA STĚNU",
+    signInTitle: "Vítej!", signInSub: "PŘÍSTUP POUZE PRO SBĚRATELE", signInBtn: "PŘIHLÁSIT",
+    wrongPw: "Špatné heslo. Zkus znovu.", collectorsOnly: "Jen pro sběratele 🥤",
+    loading: "NAČÍTÁNÍ…", noWallPhotos: "Zatím žádné fotky",
+    uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
+    sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
+    sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A",
+    gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
+    onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
+    foundItTitle: "NALEZENO", est: "★ ZAL. 2020 ★", every: "★ KAŽDÁ PLECHOVKA SE POČÍTÁ ★",
+    exportBtn: "💾 EXPORTOVAT ZÁLOHU JSON",
+  } : {
+    collection: "Collection", wishlist: "Wishlist", canwall: "Can Wall", stats: "Stats",
+    collectionTitle: "The Collection", wishlistTitle: "Wishlist", canwallTitle: "Can Wall", statsTitle: "Stats",
+    collectionSub: "SODA CAN COLLECTION", tagline: "★ EVERY CAN TELLS A STORY ★",
+    signIn: "🔐 Sign in", signOut: "Sign out",
+    addCan: "+ Add Can", bulk: "📦 Bulk", colors: "🎨 Colors",
+    random: "🎲 Random", filterTag: "FILTER BY TAG", filterCountry: "🌍 FILTER BY COUNTRY",
+    clearFilters: "clear filters", cansInVault: (n) => `${n} CANS IN VAULT`,
+    showingOf: (n, t) => `SHOWING ${n} OF ${t}`,
+    noCansFound: "No cans found",
+    wishlistSub: "CANS I WANT TO FIND",
+    addWish: "+ Add Wish", noWishes: "No wishes yet", noWishesHint: "Add cans you're hunting for!",
+    markFound: "✅ Found it!", edit: "Edit", remove: "Remove", copy: "📋 Copy", share: "🔗 Share",
+    linkCopied: "✅ Link copied!",
+    addCanTitle: "Add a Can", editCanTitle: "Edit",
+    saveChanges: "SAVE CHANGES", addToVault: "ADD TO VAULT",
+    canName: "CAN NAME", tags: "TAGS", note: "NOTE", price: "PRICE", countries: "COUNTRIES",
+    tapToUpload: "TAP TO UPLOAD PHOTO", changeRecrop: "✂️ CHANGE & RE-CROP",
+    addWishTitle: "Add a Wish", canWallSub: "SHELF & WALL PHOTOS",
+    addPhoto: "+ Add Photo", uploadFirst: "UPLOAD FIRST PHOTO",
+    addPhotoTitle: "Add Wall Photo", caption: "CAPTION (optional)", addToWall: "ADD TO WALL",
+    signInTitle: "Welcome!", signInSub: "COLLECTOR ACCESS ONLY", signInBtn: "SIGN IN",
+    wrongPw: "Incorrect password. Please try again.", collectorsOnly: "Collectors only 🥤",
+    loading: "LOADING…", noWallPhotos: "No wall photos yet",
+    uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
+    sharedTags: "SHARED TAGS — added to every can",
+    sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A",
+    gridView: "⊞ GRID", tileView: "▤ TILE",
+    onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
+    foundItTitle: "FOUND IT", est: "★ EST. 2020 ★", every: "★ EVERY CAN COUNTS ★",
+    exportBtn: "💾 EXPORT BACKUP JSON",
+  };
+
   const NAV = [
-    { id: "collection", path: "/", label: "Collection", icon: "🥤", title: "The Collection" },
-    { id: "wishlist", path: "/wishlist", label: "Wishlist", icon: "⭐", title: "Wishlist" },
-    { id: "wall", path: "/canwall", label: "Can Wall", icon: "📸", title: "Can Wall" },
-    { id: "stats", path: "/stats", label: "Stats", icon: "📊", title: "Collection Stats" },
+    { id: "collection", path: "/", label: L.collection, icon: "🥤", title: L.collectionTitle },
+    { id: "wishlist", path: "/wishlist", label: L.wishlist, icon: "⭐", title: L.wishlistTitle },
+    { id: "wall", path: "/canwall", label: L.canwall, icon: "📸", title: L.canwallTitle },
+    { id: "stats", path: "/stats", label: L.stats, icon: "📊", title: L.statsTitle },
   ];
 
   const currentNav = NAV.find(n => n.path === location.pathname) || NAV[0];
@@ -2128,22 +2194,26 @@ export default function App() {
       {/* HEADER */}
       <header className="hdr" style={{ background: "#C8102E", backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 28px,#00000012 28px,#00000012 29px)", borderBottom: "5px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
         <div style={{ background: "#8a0000", padding: "3px 12px", display: "flex", justifyContent: "center", gap: 16, overflow: "hidden" }}>
-          {["★ EST. 2020 ★", "★ EVERY CAN COUNTS ★"].map(t => (
+          {[L.est, L.every].map(t => (
             <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>{t}</span>
           ))}
         </div>
 
-        {/* Single row: logo left, dark toggle + hamburger right. Nothing else. */}
         <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", fontSize: 20 }}>🥤</div>
             <div>
               <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#FFF5E6", lineHeight: 1, textShadow: "2px 2px 0 #7a0000" }}>CanVault</div>
-              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: "#FFD0C0", letterSpacing: "0.2em" }}>SODA CAN COLLECTION</div>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: "#FFD0C0", letterSpacing: "0.2em" }}>{L.collectionSub}</div>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Czech mode toggle */}
+            <button onClick={() => setCz(c => !c)} style={{ background: cz ? "#FFF5E6" : "#8a0000", border: `2px solid ${cz ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "5px 10px", color: cz ? "#C8102E" : "#FFF5E6", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: "0.05em", lineHeight: 1 }}>
+              🇨🇿
+            </button>
+            {/* Dark mode toggle */}
             <button onClick={() => setDark(d => !d)} style={{ background: dark ? "#FFF5E6" : "#8a0000", border: `2px solid ${dark ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "7px 11px", color: dark ? "#C8102E" : "#FFF5E6", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>
               {dark ? "☀️" : "🌙"}
             </button>
@@ -2153,7 +2223,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Dropdown menu — all navigation lives here */}
         {menuOpen && (
           <div className="mob-menu" style={{ background: "#a00020", borderTop: "2px solid #7a0000", padding: "10px 14px 16px" }}>
             {NAV.map(n => (
@@ -2165,15 +2234,15 @@ export default function App() {
             ))}
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 12 }}>
               {isAdmin
-                ? <button onClick={() => { setIsAdmin(false); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>SIGN OUT</button>
-                : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>🔐 SIGN IN</button>
+                ? <button onClick={() => { setIsAdmin(false); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signOut.toUpperCase()}</button>
+                : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signIn}</button>
               }
             </div>
           </div>
         )}
       </header>
 
-      {/* HERO BAND — subpage header */}
+      {/* HERO BAND */}
       <div style={{ background: T.stripe, borderBottom: `3px solid ${T.border}`, padding: "14px 20px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.15em", cursor: "pointer" }} onClick={() => goTo("/")}>CANVAULT</span>
@@ -2192,22 +2261,22 @@ export default function App() {
       {/* PAGE CONTENT */}
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 14px" }}>
         <Routes>
-          <Route path="/" element={<CollectionPage T={T} isAdmin={isAdmin} />} />
-          <Route path="/wishlist" element={<WishlistPage T={T} isAdmin={isAdmin} />} />
-          <Route path="/canwall" element={<CanWallPage T={T} isAdmin={isAdmin} />} />
-          <Route path="/stats" element={<StatsPage T={T} />} />
-          <Route path="*" element={<CollectionPage T={T} isAdmin={isAdmin} />} />
+          <Route path="/" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
+          <Route path="/wishlist" element={<WishlistPage T={T} L={L} isAdmin={isAdmin} />} />
+          <Route path="/canwall" element={<CanWallPage T={T} L={L} isAdmin={isAdmin} />} />
+          <Route path="/stats" element={<StatsPage T={T} L={L} />} />
+          <Route path="*" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
         </Routes>
       </main>
 
       {/* Footer */}
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
-        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>★ EVERY CAN TELLS A STORY ★</p>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>{L.tagline}</p>
         <a href="mailto:tondatonc@gmail.com" style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textMuted, marginTop: 10, display: "inline-block", textDecoration: "none", fontStyle: "italic" }}>tondatonc@gmail.com</a>
       </div>
 
-      {showLogin && <LoginModal T={T} onLogin={() => { setIsAdmin(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
+      {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
     </div>
   );
 }
