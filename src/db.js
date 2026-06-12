@@ -118,6 +118,18 @@ export async function deleteWallPhoto(id) {
   });
 }
 
+
+export async function updateWallPhoto(photo) {
+  return request(`${base("wall_photos")}?id=eq.${encodeURIComponent(photo.id)}`, {
+    method: "PATCH",
+    headers: headers({ Prefer: "return=minimal" }),
+    body: JSON.stringify({
+      image_url: photo.image,
+      caption: photo.caption || null,
+    }),
+  });
+}
+
 // ─── ROW CONVERTERS ───────────────────────────────────────────────────────────
 
 export const rowToCan = r => ({
