@@ -600,7 +600,7 @@ function sortCans(cans, sort) {
 
 // ─── ADD / EDIT MODAL ────────────────────────────────────────────────────────
 
-function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], folder = "collection" }) {
+function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], folder = "collection", allTags = [] }) {
   const [name, setName] = useState(initial.name || "");
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState(initial.tags || []);
@@ -613,14 +613,21 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [uploadErr, setUploadErr] = useState("");
   const [cropSrc, setCropSrc] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
+  const [tagSuggestions, setTagSuggestions] = useState([]);
   const fileRef = useRef();
 
+  const getTagSuggestions = (q) => {
+    if (!q.trim()) return setTagSuggestions([]);
+    const low = q.toLowerCase().replace(/\s+/g, "-");
+    setTagSuggestions(
+      allTags.filter(t => t.includes(low) && !tags.includes(t)).slice(0, 6)
+    );
+  };
 
-
-  const addTag = () => {
-    const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+  const addTag = (raw) => {
+    const t = (raw || tagInput).trim().toLowerCase().replace(/\s+/g, "-");
     if (t && !tags.includes(t)) setTags([...tags, t]);
-    setTagInput("");
+    setTagInput(""); setTagSuggestions([]);
   };
 
   const handleFile = (f) => {
@@ -722,12 +729,27 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
       </div>
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>TAGS</label>
-      <div style={{ display: "flex", gap: 7, marginBottom: 8 }}>
-        <input value={tagInput} onChange={e => setTagInput(e.target.value)}
-          onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addTag())}
-          placeholder="coca-cola, 330ml…"
-          style={{ flex: 1, padding: "10px 13px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
-        <button onClick={addTag} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 16px", color: "#fff", cursor: "pointer", fontSize: 20, fontWeight: 700 }}>+</button>
+      <div style={{ position: "relative", marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 7 }}>
+          <input value={tagInput} onChange={e => { setTagInput(e.target.value); getTagSuggestions(e.target.value); }}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); } if (e.key === "Escape") setTagSuggestions([]); if (e.key === "ArrowDown" && tagSuggestions.length > 0) { e.preventDefault(); addTag(tagSuggestions[0]); } }}
+            onBlur={() => setTimeout(() => setTagSuggestions([]), 150)}
+            placeholder="coca-cola, 330ml…"
+            style={{ flex: 1, padding: "10px 13px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
+          <button onClick={() => addTag()} style={{ background: "#C8102E", border: "none", borderRadius: 9, padding: "0 16px", color: "#fff", cursor: "pointer", fontSize: 20, fontWeight: 700 }}>+</button>
+        </div>
+        {tagSuggestions.length > 0 && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 46, background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 10, zIndex: 50, overflow: "hidden", boxShadow: "0 8px 24px #00000044", marginTop: 2 }}>
+            {tagSuggestions.map(t => (
+              <div key={t} onMouseDown={() => addTag(t)}
+                style={{ padding: "8px 12px", cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 11, color: "#C8102E", letterSpacing: "0.06em", borderBottom: `1px solid ${T.border}`, transition: "background 0.1s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#C8102E15"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                #{t}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 18, minHeight: 26 }}>
         {tags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setTags(tags.filter(x => x !== t))} />)}
@@ -1052,6 +1074,123 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
   );
 }
 
+// ─── BULK TAG MODAL ───────────────────────────────────────────────────────────
+
+function BulkTagModal({ T, cans, onSave, onClose }) {
+  const [selected, setSelected] = useState(new Set());
+  const [tagInput, setTagInput] = useState("");
+  const [applyTags, setApplyTags] = useState([]);
+  const [removeTags, setRemoveTags] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const allTags = [...new Set(cans.flatMap(c => c.tags))].sort();
+
+  const toggleCan = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSelected(s => s.size === cans.length ? new Set() : new Set(cans.map(c => c.id)));
+
+  const addApplyTag = () => {
+    const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+    if (t && !applyTags.includes(t)) setApplyTags(p => [...p, t]);
+    setTagInput("");
+  };
+
+  const handleSave = async () => {
+    if (selected.size === 0) return;
+    setSaving(true);
+    const updated = cans.map(c => {
+      if (!selected.has(c.id)) return c;
+      let tags = [...c.tags];
+      applyTags.forEach(t => { if (!tags.includes(t)) tags.push(t); });
+      removeTags.forEach(t => { tags = tags.filter(x => x !== t); });
+      return { ...c, tags };
+    });
+    await onSave(updated.filter(c => selected.has(c.id)));
+    setSaving(false);
+    setDone(true);
+  };
+
+  return (
+    <ModalShell onClose={onClose} T={T}>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Edit Tags</div>
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
+
+      {done ? (
+        <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 13, color: "#22C55E", letterSpacing: "0.1em" }}>UPDATED {selected.size} CANS</p>
+          <button onClick={onClose} style={{ marginTop: 16, padding: "10px 28px", background: "#C8102E", border: "none", borderRadius: 10, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>DONE</button>
+        </div>
+      ) : (
+        <>
+          {/* Tags to add */}
+          <div style={{ marginBottom: 12, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#22C55E", letterSpacing: "0.2em", marginBottom: 6 }}>+ TAGS TO ADD</p>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addApplyTag())}
+                placeholder="tag to add to selected cans…"
+                style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+              <button onClick={addApplyTag} style={{ background: "#22C55E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {applyTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setApplyTags(p => p.filter(x => x !== t))} />)}
+            </div>
+          </div>
+
+          {/* Tags to remove */}
+          <div style={{ marginBottom: 12, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#C8102E", letterSpacing: "0.2em", marginBottom: 6 }}>− TAGS TO REMOVE (tap to mark)</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {allTags.map(t => (
+                <span key={t} onClick={() => setRemoveTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t])}
+                  style={{ padding: "3px 10px", borderRadius: "999px", fontSize: 10, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.06em", cursor: "pointer", userSelect: "none", transition: "all 0.15s",
+                    background: removeTags.includes(t) ? "#C8102E" : T.bgCard,
+                    color: removeTags.includes(t) ? "#fff" : "#C8102E",
+                    border: `1.5px solid ${removeTags.includes(t) ? "#C8102E" : "#C8102E44"}`,
+                    textDecoration: removeTags.includes(t) ? "line-through" : "none",
+                  }}>#{t}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Can selector */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em" }}>SELECT CANS ({selected.size} selected)</p>
+              <button onClick={toggleAll} style={{ background: "none", border: "none", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 9, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>
+                {selected.size === cans.length ? "DESELECT ALL" : "SELECT ALL"}
+              </button>
+            </div>
+            <div style={{ maxHeight: "28vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+              {cans.map(c => (
+                <div key={c.id} onClick={() => toggleCan(c.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", background: selected.has(c.id) ? "#C8102E0f" : T.bgInput, border: `1.5px solid ${selected.has(c.id) ? "#C8102E66" : T.border}`, borderRadius: 8, cursor: "pointer", transition: "all 0.12s" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${selected.has(c.id) ? "#C8102E" : T.border}`, background: selected.has(c.id) ? "#C8102E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, color: "#fff" }}>
+                    {selected.has(c.id) ? "✓" : ""}
+                  </div>
+                  <div style={{ width: 28, height: 40, flexShrink: 0 }}>
+                    {c.image ? <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 3 }} /> : <CanSvg color={getCanColor(c.tags)} name={c.name} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                    <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 2 }}>{c.tags.slice(0, 4).map(t => <TagPill key={t} tag={t} T={T} />)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={handleSave} disabled={selected.size === 0 || (applyTags.length === 0 && removeTags.length === 0) || saving}
+            style={{ width: "100%", padding: "13px", background: (selected.size > 0 && (applyTags.length > 0 || removeTags.length > 0)) ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E33" }}>
+            {saving ? "SAVING…" : `APPLY TO ${selected.size} CAN${selected.size !== 1 ? "S" : ""}`}
+          </button>
+        </>
+      )}
+    </ModalShell>
+  );
+}
+
 // ─── TAG COLOR MODAL ──────────────────────────────────────────────────────────
 
 function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
@@ -1178,14 +1317,34 @@ function LoadingSpinner({ T }) {
 function CollectionPage({ T, isAdmin }) {
   const [cans, setCans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [activeTags, setActiveTags] = useState([]);
-  const [sort, setSort] = useState("newest");
-  const [viewMode, setViewMode] = useState("grid");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Read initial state from URL params
+  const searchParams = new URLSearchParams(location.search);
+  const [search, setSearch] = useState(searchParams.get("q") || "");
+  const [activeTags, setActiveTags] = useState(() => { const t = searchParams.get("tag"); return t ? t.split(",").filter(Boolean) : []; });
+  const [sort, setSort] = useState(searchParams.get("sort") || "newest");
+  const [viewMode, setViewMode] = useState(searchParams.get("view") || "grid");
   const [modal, setModal] = useState(null);
   const [pinned, setPinned] = useState(() => { try { return JSON.parse(localStorage.getItem("cv_pinned") || "[]"); } catch { return []; } });
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
-  const [activeCountry, setActiveCountry] = useState(null);
+  const [activeCountry, setActiveCountry] = useState(searchParams.get("country") || null);
+
+  // Sync filters to URL (skip ?can= deep links)
+  useEffect(() => {
+    if (skipUrlSync.current) return;
+    const p = new URLSearchParams();
+    if (search) p.set("q", search);
+    if (activeTags.length > 0) p.set("tag", activeTags.join(","));
+    if (sort !== "newest") p.set("sort", sort);
+    if (viewMode !== "grid") p.set("view", viewMode);
+    if (activeCountry) p.set("country", activeCountry);
+    const qs = p.toString();
+    navigate(qs ? `/?${qs}` : "/", { replace: true });
+  }, [search, activeTags, sort, viewMode, activeCountry]);
+
+  const skipUrlSync = useRef(false);
 
   useEffect(() => { localStorage.setItem("cv_pinned", JSON.stringify(pinned)); }, [pinned]);
 
@@ -1201,8 +1360,12 @@ function CollectionPage({ T, isAdmin }) {
       if (canId) {
         const target = loaded.find(c => c.id === canId);
         if (target) setModal({ can: target });
-        // Clean URL without reloading
-        window.history.replaceState({}, "", window.location.pathname);
+        // Remove just the ?can= param, preserving other filter params
+        params.delete("can");
+        const qs = params.toString();
+        skipUrlSync.current = true;
+        window.history.replaceState({}, "", qs ? `/?${qs}` : "/");
+        setTimeout(() => { skipUrlSync.current = false; }, 50);
       }
     }).catch(() => { setCans(SAMPLE_CANS); setLoading(false); });
   }, []);
@@ -1314,6 +1477,7 @@ function CollectionPage({ T, isAdmin }) {
           {isAdmin && (
             <>
               <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>📦 BULK</button>
+              <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🏷️ TAGS</button>
               <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🎨 COLORS</button>
               <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD CAN</button>
             </>
@@ -1338,8 +1502,9 @@ function CollectionPage({ T, isAdmin }) {
       )}
 
       {/* Modals */}
-      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} />}
+      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTags} />}
       {modal === "bulk" && <BulkUploadModal T={T} folder="collection" onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
+      {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTags} customColors={customColors} onSave={setCustomColors} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
@@ -1353,7 +1518,7 @@ function CollectionPage({ T, isAdmin }) {
           onClose={() => setModal(null)} />
       )}
       {modal?.can && modal.edit && (
-        <AddEditModal T={T} initial={modal.can} onSave={saveCan} onClose={() => setModal(null)} />
+        <AddEditModal T={T} initial={modal.can} onSave={saveCan} onClose={() => setModal(null)} allTags={allTags} />
       )}
       </>}
     </div>
@@ -1539,7 +1704,7 @@ function WishlistPage({ T, isAdmin }) {
         </div>
       )}
 
-      {modal === "add" && <AddEditModal T={T} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} />}
+      {modal === "add" && <AddEditModal T={T} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTags} />}
       {modal?.wish && !modal.edit && (
         <WishDetailModal T={T} wish={modal.wish} isAdmin={isAdmin}
           onDelete={id => { removeWish(id); setModal(null); }}
@@ -1557,7 +1722,7 @@ function WishlistPage({ T, isAdmin }) {
           onClose={() => setModal(null)} />
       )}
       {modal?.wish && modal.edit && (
-        <AddEditModal T={T} initial={modal.wish} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} />
+        <AddEditModal T={T} initial={modal.wish} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTags} />
       )}
       </>}
     </div>
@@ -1605,6 +1770,11 @@ function WishTileCard({ wish, i, T, onClick }) {
 
 function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFound, onCountryExpanded }) {
   const color = getCanColor(wish.tags);
+  const [foundMode, setFoundMode] = useState(false);
+  const [newImage, setNewImage] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [cropSrc, setCropSrc] = useState(null);
+  const fileRef = useRef();
 
   useEffect(() => {
     if (!wish.countries?.length) return;
@@ -1614,6 +1784,29 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
   }, [wish.id]);
 
   const resolvedCountries = wish.countries?.map(c => resolveCountry(c)).filter(Boolean) || [];
+
+  const handleFoundFile = (f) => {
+    if (!f || !f.type.startsWith("image/")) return;
+    setCropSrc(URL.createObjectURL(f));
+  };
+
+  const handleCropped = async (croppedFile) => {
+    setCropSrc(null);
+    setUploading(true);
+    try {
+      const compressed = await compressCanPhoto(croppedFile);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "image/jpeg", "x-filename": `collection/${Date.now()}.jpg`, "x-canvault-auth": atob(_PH) },
+        body: compressed,
+      });
+      if (res.ok) { const { url } = await res.json(); setNewImage(url); }
+      else { const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(croppedFile); }
+    } catch { const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(croppedFile); }
+    setUploading(false);
+  };
+
+  if (cropSrc) return <CropModal src={cropSrc} T={T} quality={0.85} targetKB={150} onCrop={handleCropped} onCancel={() => setCropSrc(null)} />;
 
   return (
     <ModalShell onClose={onClose} T={T}>
@@ -1639,9 +1832,37 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
         </div>
         {isAdmin && (
           <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-            <button onClick={() => { onMarkFound(wish); onClose(); }} style={{ background: "#22C55E", border: "none", borderRadius: 9, padding: "9px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>✅ FOUND IT!</button>
-            <button onClick={onEdit} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>EDIT</button>
-            <button onClick={() => { onDelete(wish.id); onClose(); }} style={{ background: "transparent", border: "2px solid #C8102E66", borderRadius: 9, padding: "9px 16px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>REMOVE</button>
+            {!foundMode ? (
+              <>
+                <button onClick={() => setFoundMode(true)} style={{ background: "#22C55E", border: "none", borderRadius: 9, padding: "9px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>✅ FOUND IT!</button>
+                <button onClick={onEdit} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>EDIT</button>
+                <button onClick={() => { onDelete(wish.id); onClose(); }} style={{ background: "transparent", border: "2px solid #C8102E66", borderRadius: 9, padding: "9px 16px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>REMOVE</button>
+              </>
+            ) : (
+              <div style={{ width: "100%", background: T.bgInput, border: `2px solid #22C55E44`, borderRadius: 12, padding: "14px 16px" }}>
+                <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#22C55E", letterSpacing: "0.2em", marginBottom: 10 }}>🎉 FOUND IT! REPLACE PHOTO?</p>
+                {uploading ? (
+                  <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, textAlign: "center" }}>⏳ UPLOADING…</p>
+                ) : newImage ? (
+                  <div style={{ textAlign: "center", marginBottom: 10 }}>
+                    <img src={newImage} alt="" style={{ height: 80, borderRadius: 8, objectFit: "contain" }} />
+                    <button onClick={() => setNewImage(null)} style={{ display: "block", margin: "6px auto 0", background: "none", border: "none", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 9, cursor: "pointer", textDecoration: "underline" }}>CHANGE</button>
+                  </div>
+                ) : (
+                  <label style={{ display: "block", padding: "10px", background: T.bgCard, border: `2px dashed ${T.border}`, borderRadius: 9, textAlign: "center", cursor: "pointer", marginBottom: 10 }}>
+                    <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFoundFile(e.target.files[0])} />
+                    <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.1em" }}>📸 TAP TO ADD NEW PHOTO</span>
+                  </label>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setFoundMode(false)} style={{ flex: 1, padding: "9px", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 9, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>CANCEL</button>
+                  <button onClick={() => { onMarkFound({ ...wish, image: newImage || wish.image }); onClose(); }}
+                    style={{ flex: 2, padding: "9px", background: "#22C55E", border: "none", borderRadius: 9, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
+                    ✅ MOVE TO COLLECTION
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2052,6 +2273,44 @@ function StatsPage({ T }) {
           </div>
         )}
       </div>
+
+      {/* On This Day */}
+      {(() => {
+        const now = new Date();
+        const thisMonth = now.getMonth();
+        const thisDay = now.getDate();
+        const onThisDay = cans.filter(c => {
+          const d = new Date(c.addedAt);
+          return d.getMonth() === thisMonth && d.getDate() === thisDay && d.getFullYear() !== now.getFullYear();
+        });
+        if (onThisDay.length === 0) return null;
+        const customColors = loadCustomColors();
+        return (
+          <div style={{ background: T.bgCard, border: `2px solid #C8102E44`, borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.2em", marginBottom: 4 }}>📅 ON THIS DAY</p>
+            <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textMuted, fontStyle: "italic", marginBottom: 12 }}>
+              You added {onThisDay.length} can{onThisDay.length !== 1 ? "s" : ""} on {now.toLocaleDateString("en-GB", { day: "numeric", month: "long" })} in past years
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {onThisDay.map(c => {
+                const color = getCanColor(c.tags, customColors);
+                const year = new Date(c.addedAt).getFullYear();
+                return (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 9, padding: "7px 10px", minWidth: 0 }}>
+                    <div style={{ width: 28, height: 42, flexShrink: 0 }}>
+                      {c.image ? <img src={c.image} alt={c.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 3 }} /> : <CanSvg color={color} name={c.name} />}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 120 }}>{c.name}</div>
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{year} · {now.getFullYear() - year}yr ago</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Export */}
       <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
