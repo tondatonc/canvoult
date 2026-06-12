@@ -2499,6 +2499,13 @@ function OrphanCleanupTool({ T, cans, wishes }) {
       const { blobs } = await res.json();
       addLog(`📦 Found ${blobs.length} files in Blob storage`);
 
+      // Debug: log a sample Blob URL vs a sample Supabase URL so we can see the format difference
+      if (blobs.length > 0) addLog(`🔎 Sample Blob URL: ${blobs[0].url}`);
+      const sampleWish = wishes.find(w => w.image?.startsWith("http"));
+      if (sampleWish) addLog(`🔎 Sample Supabase wish URL: ${sampleWish.image}`);
+      const sampleCan = cans.find(c => c.image?.startsWith("http"));
+      if (sampleCan) addLog(`🔎 Sample Supabase can URL: ${sampleCan.image}`);
+
       const found = blobs.filter(b =>
         b.url && b.url.startsWith("http") &&
         !isKnown(b.url)
