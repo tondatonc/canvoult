@@ -46,6 +46,7 @@ export async function upsertCan(can) {
       price: can.price || null,
       countries: can.countries || [],
       added_at: new Date(can.addedAt).toISOString(),
+      date_unknown: can.dateUnknown || false,
     }),
   });
 }
@@ -128,6 +129,7 @@ export const rowToCan = r => ({
   price: r.price || "",
   countries: r.countries || [],
   addedAt: new Date(r.added_at).getTime(),
+  dateUnknown: r.date_unknown || false,
 });
 
 export const rowToWish = r => ({
