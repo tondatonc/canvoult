@@ -1596,11 +1596,25 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
 function WishlistPage({ T, L, isAdmin }) {
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sort, setSort] = useState("newest");
-  const [viewMode, setViewMode] = useState("grid");
-  const [activeTags, setActiveTags] = useState([]);
-  const [activeCountry, setActiveCountry] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const searchParams = new URLSearchParams(location.search);
+  const [sort, setSort] = useState(searchParams.get("sort") || "newest");
+  const [viewMode, setViewMode] = useState(searchParams.get("view") || "grid");
+  const [activeTags, setActiveTags] = useState(() => { const t = searchParams.get("tag"); return t ? t.split(",").filter(Boolean) : []; });
+  const [activeCountry, setActiveCountry] = useState(searchParams.get("country") || null);
   const [modal, setModal] = useState(null);
+
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (activeTags.length > 0) p.set("tag", activeTags.join(","));
+    if (sort !== "newest") p.set("sort", sort);
+    if (viewMode !== "grid") p.set("view", viewMode);
+    if (activeCountry) p.set("country", activeCountry);
+    const qs = p.toString();
+    navigate(qs ? `/wishlist?${qs}` : "/wishlist", { replace: true });
+  }, [activeTags, sort, viewMode, activeCountry]);
 
   useEffect(() => {
     if (!db.isConfigured()) { setWishes(SAMPLE_WISHLIST); setLoading(false); return; }
