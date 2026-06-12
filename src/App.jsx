@@ -2077,71 +2077,73 @@ function CanWallPage({ T, L, isAdmin }) {
 // Moves images that are at root of Blob (no folder) into collection/ folder
 // and updates Supabase with the new URL
 
-function MigrateBlobTool({ T, cans, onDone }) {
-  const [state, setState] = useState("idle"); // idle | running | done | error
+function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
+  const [state, setState] = useState("idle"); // idle | running | done
   const [log, setLog] = useState([]);
-  const [count, setCount] = useState({ done: 0, skip: 0, fail: 0, total: 0 });
+  const [count, setCount] = useState({ done: 0, fail: 0, total: 0 });
 
   const addLog = (msg) => setLog(p => [...p, msg]);
 
-  const needsMigration = cans.filter(c =>
-    c.image &&
-    c.image.startsWith("http") &&
-    !c.image.includes("data:") &&
-    // Not already in a folder — Blob URLs look like: https://xxx.blob.vercel-storage.com/FILENAME
-    // Foldered ones have: .../collection/xxx.jpg or .../wishlist/xxx.jpg or .../wall/xxx.jpg
-    !/\/(collection|wishlist|wall)\//.test(c.image)
-  );
+  const needsFolder = (url) =>
+    url && url.startsWith("http") && !url.includes("data:") &&
+    !/\/(collection|wishlist|wall)\//.test(url);
+
+  const toMigrate = [
+    ...cans.filter(c => needsFolder(c.image)).map(c => ({ item: c, type: "can", folder: "collection", label: c.name })),
+    ...wishes.filter(w => needsFolder(w.image)).map(w => ({ item: w, type: "wish", folder: "wishlist", label: w.name })),
+    ...(wallPhotos || []).filter(p => needsFolder(p.image)).map(p => ({ item: p, type: "wall", folder: "wall", label: p.caption || p.id })),
+  ];
 
   const run = async () => {
-    if (needsMigration.length === 0) { addLog("✅ Nothing to migrate — all images already in folders!"); return; }
+    if (toMigrate.length === 0) { addLog("✅ All images already in folders — nothing to migrate!"); return; }
     setState("running");
-    setCount({ done: 0, skip: 0, fail: 0, total: needsMigration.length });
-    const updated = {};
+    setCount({ done: 0, fail: 0, total: toMigrate.length });
+    const updatedCans = {}, updatedWishes = {}, updatedWall = {};
 
-    for (const can of needsMigration) {
+    for (const { item, type, folder, label } of toMigrate) {
       try {
-        addLog(`⬆️ Moving: ${can.name}…`);
+        addLog(`⬆️ [${folder}/] ${label}…`);
 
-        // 1. Fetch the image
-        const imgRes = await fetch(can.image);
+        const imgRes = await fetch(item.image);
         if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
         const blob = await imgRes.blob();
-        const file = new File([blob], `${Date.now()}.jpg`, { type: "image/jpeg" });
 
-        // 2. Upload to collection/ folder
         const upRes = await fetch("/api/upload", {
           method: "POST",
           headers: {
             "Content-Type": "image/jpeg",
-            "x-filename": `collection/${Date.now()}.jpg`,
+            "x-filename": `${folder}/${Date.now()}.jpg`,
             "x-canvault-auth": atob(_PH),
           },
-          body: file,
+          body: blob,
         });
         if (!upRes.ok) throw new Error(`Upload failed: ${upRes.status}`);
         const { url: newUrl } = await upRes.json();
 
-        // 3. Update Supabase with new URL
-        await db.upsertCan({ ...can, image: newUrl });
+        // Update Supabase with new URL
+        if (type === "can") { await db.upsertCan({ ...item, image: newUrl }); updatedCans[item.id] = newUrl; }
+        else if (type === "wish") { await db.upsertWish({ ...item, image: newUrl }); updatedWishes[item.id] = newUrl; }
+        else if (type === "wall") { await db.updateWallPhoto({ ...item, image: newUrl }); updatedWall[item.id] = newUrl; }
 
-        // 4. Delete old blob
-        await deleteFromBlob(can.image);
+        // Delete old blob
+        await deleteFromBlob(item.image);
 
-        updated[can.id] = newUrl;
-        addLog(`✅ Done: ${can.name}`);
+        addLog(`✅ ${label} → ${folder}/`);
         setCount(c => ({ ...c, done: c.done + 1 }));
       } catch (err) {
-        addLog(`❌ Failed: ${can.name} — ${err.message}`);
+        addLog(`❌ Failed: ${label} — ${err.message}`);
         setCount(c => ({ ...c, fail: c.fail + 1 }));
       }
     }
 
     setState("done");
-    if (Object.keys(updated).length > 0) onDone(updated);
+    onDone({ cans: updatedCans, wishes: updatedWishes, wall: updatedWall });
   };
 
-  if (needsMigration.length === 0 && state === "idle") return null;
+  if (toMigrate.length === 0 && state === "idle") return null;
+
+  // Group counts by folder for the summary
+  const byFolder = toMigrate.reduce((acc, { folder }) => { acc[folder] = (acc[folder] || 0) + 1; return acc; }, {});
 
   return (
     <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px" }}>
@@ -2150,11 +2152,18 @@ function MigrateBlobTool({ T, cans, onDone }) {
       </p>
       {state === "idle" && (
         <>
-          <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
-            Found <strong>{needsMigration.length}</strong> image{needsMigration.length !== 1 ? "s" : ""} stored in the root of Blob (no folder). This tool moves them into <code style={{ background: T.bgInput, padding: "1px 5px", borderRadius: 4, fontSize: 11 }}>collection/</code> and updates Supabase automatically.
+          <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 8 }}>
+            Found <strong>{toMigrate.length}</strong> image{toMigrate.length !== 1 ? "s" : ""} in the Blob root (no folder). This moves them into the correct folders and updates Supabase.
           </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {Object.entries(byFolder).map(([folder, n]) => (
+              <span key={folder} style={{ padding: "3px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "999px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.08em" }}>
+                {folder === "collection" ? "🥤" : folder === "wishlist" ? "⭐" : "📸"} {n} → <code>{folder}/</code>
+              </span>
+            ))}
+          </div>
           <button onClick={run} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
-            ▶ MIGRATE {needsMigration.length} IMAGES
+            ▶ MIGRATE {toMigrate.length} IMAGE{toMigrate.length !== 1 ? "S" : ""}
           </button>
         </>
       )}
@@ -2168,14 +2177,13 @@ function MigrateBlobTool({ T, cans, onDone }) {
               </div>
             ))}
           </div>
-          {/* Progress bar */}
           <div style={{ height: 4, background: T.border, borderRadius: 2, marginBottom: 10, overflow: "hidden" }}>
             <div style={{ height: "100%", background: "#22C55E", borderRadius: 2, width: `${((count.done + count.fail) / Math.max(count.total, 1)) * 100}%`, transition: "width 0.3s" }} />
           </div>
-          <div style={{ maxHeight: 140, overflowY: "auto", background: T.bgInput, borderRadius: 8, padding: "8px 10px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.05em", lineHeight: 1.8 }}>
+          <div style={{ maxHeight: 160, overflowY: "auto", background: T.bgInput, borderRadius: 8, padding: "8px 10px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.05em", lineHeight: 1.8 }}>
             {log.map((l, i) => <div key={i}>{l}</div>)}
           </div>
-          {state === "done" && <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#22C55E", marginTop: 8, fontStyle: "italic" }}>Migration complete! Refresh the page to see updated images.</p>}
+          {state === "done" && <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#22C55E", marginTop: 8, fontStyle: "italic" }}>Migration complete! Refresh to see updated images.</p>}
         </>
       )}
     </div>
@@ -2187,18 +2195,21 @@ function MigrateBlobTool({ T, cans, onDone }) {
 function StatsPage({ T, L }) {
   const [cans, setCans] = useState([]);
   const [wishes, setWishes] = useState([]);
+  const [wallPhotos, setWallPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [c, w] = await Promise.all([
+        const [c, w, wp] = await Promise.all([
           db.isConfigured() ? db.getCans() : Promise.resolve(SAMPLE_CANS),
           db.isConfigured() ? db.getWishlist() : Promise.resolve(SAMPLE_WISHLIST),
+          db.isConfigured() ? db.getWallPhotos() : Promise.resolve([]),
         ]);
         setCans(db.isConfigured() ? c.map(db.rowToCan) : c);
         setWishes(db.isConfigured() ? w.map(db.rowToWish) : w);
-      } catch { setCans(SAMPLE_CANS); setWishes(SAMPLE_WISHLIST); }
+        setWallPhotos(db.isConfigured() ? wp.map(db.rowToPhoto) : []);
+      } catch { setCans(SAMPLE_CANS); setWishes(SAMPLE_WISHLIST); setWallPhotos([]); }
       setLoading(false);
     };
     loadData();
@@ -2352,7 +2363,11 @@ function StatsPage({ T, L }) {
         <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Downloads a JSON file with your full collection + wishlist</p>
 
         {/* Migration tool */}
-        <MigrateBlobTool T={T} cans={cans} onDone={(updated) => setCans(p => p.map(c => updated[c.id] ? { ...c, image: updated[c.id] } : c))} />
+        <MigrateBlobTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos}
+          onDone={({ cans: uc, wishes: uw }) => {
+            if (uc) setCans(p => p.map(c => uc[c.id] ? { ...c, image: uc[c.id] } : c));
+            if (uw) setWishes(p => p.map(w => uw[w.id] ? { ...w, image: uw[w.id] } : w));
+          }} />
         <OrphanCleanupTool T={T} cans={cans} wishes={wishes} />
       </div>
     </div>
