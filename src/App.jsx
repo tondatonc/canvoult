@@ -2353,7 +2353,161 @@ function StatsPage({ T, L }) {
 
         {/* Migration tool */}
         <MigrateBlobTool T={T} cans={cans} onDone={(updated) => setCans(p => p.map(c => updated[c.id] ? { ...c, image: updated[c.id] } : c))} />
+        <OrphanCleanupTool T={T} cans={cans} wishes={wishes} />
       </div>
+    </div>
+  );
+}
+
+// ─── ORPHAN BLOB CLEANUP TOOL ─────────────────────────────────────────────────
+// Finds Blob images not referenced by any can or wish, and deletes them.
+
+function OrphanCleanupTool({ T, cans, wishes }) {
+  const [state, setState] = useState("idle"); // idle | scanning | confirm | deleting | done
+  const [orphans, setOrphans] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [log, setLog] = useState([]);
+  const [count, setCount] = useState({ done: 0, fail: 0, total: 0 });
+
+  const addLog = (msg) => setLog(p => [...p, msg]);
+
+  // All known URLs referenced in Supabase
+  const knownUrls = new Set([
+    ...cans.map(c => c.image).filter(Boolean),
+    ...wishes.map(w => w.image).filter(Boolean),
+  ]);
+
+  const scan = async () => {
+    setState("scanning");
+    setLog([]);
+    setOrphans([]);
+    try {
+      addLog("🔍 Fetching Blob file list…");
+      const res = await fetch("/api/list-blobs", {
+        headers: { "x-canvault-auth": atob(_PH) },
+      });
+      if (!res.ok) throw new Error(`API returned ${res.status} — make sure api/list-blobs.mjs exists`);
+      const { blobs } = await res.json();
+      addLog(`📦 Found ${blobs.length} files in Blob storage`);
+
+      const found = blobs.filter(b =>
+        b.url && b.url.startsWith("http") &&
+        !knownUrls.has(b.url)
+      );
+      addLog(`🗑️ ${found.length} orphaned file${found.length !== 1 ? "s" : ""} not referenced by any can or wish`);
+      setOrphans(found);
+      setSelected(new Set(found.map(b => b.url)));
+      setState("confirm");
+    } catch (err) {
+      addLog(`❌ Scan failed: ${err.message}`);
+      setState("idle");
+    }
+  };
+
+  const deleteSelected = async () => {
+    const toDelete = orphans.filter(b => selected.has(b.url));
+    setState("deleting");
+    setCount({ done: 0, fail: 0, total: toDelete.length });
+    for (const blob of toDelete) {
+      try {
+        await deleteFromBlob(blob.url);
+        addLog(`✅ Deleted: ${blob.pathname || blob.url.split("/").pop()}`);
+        setCount(c => ({ ...c, done: c.done + 1 }));
+      } catch (err) {
+        addLog(`❌ Failed: ${blob.pathname || blob.url} — ${err.message}`);
+        setCount(c => ({ ...c, fail: c.fail + 1 }));
+      }
+    }
+    setState("done");
+  };
+
+  const toggleAll = () => setSelected(s => s.size === orphans.length ? new Set() : new Set(orphans.map(b => b.url)));
+
+  return (
+    <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginTop: 12 }}>
+      <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 8 }}>
+        🗑️ ORPHAN BLOB CLEANUP
+      </p>
+
+      {state === "idle" && (
+        <>
+          <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
+            Scans Blob storage for images not referenced by any can or wishlist item, then lets you delete them to free up space.
+          </p>
+          <button onClick={scan} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
+            🔍 SCAN FOR ORPHANS
+          </button>
+        </>
+      )}
+
+      {state === "scanning" && (
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textMuted, letterSpacing: "0.1em" }}>⏳ Scanning…</p>
+      )}
+
+      {state === "confirm" && (
+        <>
+          {orphans.length === 0 ? (
+            <p style={{ fontFamily: "Georgia,serif", fontSize: 13, color: "#22C55E", fontStyle: "italic" }}>✅ No orphaned files found — Blob storage is clean!</p>
+          ) : (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.1em" }}>
+                  {selected.size} OF {orphans.length} SELECTED FOR DELETION
+                </p>
+                <button onClick={toggleAll} style={{ background: "none", border: "none", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 9, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>
+                  {selected.size === orphans.length ? "DESELECT ALL" : "SELECT ALL"}
+                </button>
+              </div>
+              <div style={{ maxHeight: "28vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+                {orphans.map(b => {
+                  const filename = b.pathname || b.url.split("/").pop();
+                  const isImg = /\.(jpg|jpeg|png|webp|gif)$/i.test(filename);
+                  return (
+                    <div key={b.url} onClick={() => setSelected(s => { const n = new Set(s); n.has(b.url) ? n.delete(b.url) : n.add(b.url); return n; })}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", background: selected.has(b.url) ? "#C8102E0f" : T.bgInput, border: `1.5px solid ${selected.has(b.url) ? "#C8102E44" : T.border}`, borderRadius: 8, cursor: "pointer", transition: "all 0.12s" }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${selected.has(b.url) ? "#C8102E" : T.border}`, background: selected.has(b.url) ? "#C8102E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, color: "#fff" }}>
+                        {selected.has(b.url) ? "✓" : ""}
+                      </div>
+                      {isImg && <img src={b.url} alt="" style={{ width: 32, height: 48, objectFit: "contain", borderRadius: 3, flexShrink: 0, opacity: 0.8 }} onError={e => e.target.style.display = "none"} />}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "0.05em" }}>{filename}</div>
+                        <div style={{ fontFamily: "Georgia,serif", fontSize: 9, color: T.textFaint, fontStyle: "italic" }}>{b.size ? `${(b.size / 1024).toFixed(0)} KB` : ""}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { setState("idle"); setOrphans([]); setLog([]); }} style={{ flex: 1, padding: "9px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>CANCEL</button>
+                <button onClick={deleteSelected} disabled={selected.size === 0}
+                  style={{ flex: 2, padding: "9px", background: selected.size > 0 ? "#C8102E" : T.border, border: "none", borderRadius: 9, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: selected.size > 0 ? "pointer" : "not-allowed" }}>
+                  🗑️ DELETE {selected.size} FILE{selected.size !== 1 ? "S" : ""}
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {(state === "deleting" || state === "done") && (
+        <>
+          <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+            {[["✅ Deleted", count.done, "#22C55E"], ["❌ Failed", count.fail, "#FF4444"], ["Total", count.total, T.textMuted]].map(([l, v, c]) => (
+              <div key={l} style={{ textAlign: "center" }}>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 900, color: c }}>{v}</div>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ height: 4, background: T.border, borderRadius: 2, marginBottom: 10, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "#22C55E", borderRadius: 2, width: `${((count.done + count.fail) / Math.max(count.total, 1)) * 100}%`, transition: "width 0.3s" }} />
+          </div>
+          <div style={{ maxHeight: 140, overflowY: "auto", background: T.bgInput, borderRadius: 8, padding: "8px 10px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.05em", lineHeight: 1.8 }}>
+            {log.map((l, i) => <div key={i}>{l}</div>)}
+          </div>
+          {state === "done" && <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#22C55E", marginTop: 8, fontStyle: "italic" }}>Done! {count.done} file{count.done !== 1 ? "s" : ""} deleted.</p>}
+        </>
+      )}
     </div>
   );
 }
