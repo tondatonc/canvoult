@@ -2465,11 +2465,26 @@ function OrphanCleanupTool({ T, cans, wishes }) {
 
   const addLog = (msg) => setLog(p => [...p, msg]);
 
-  // All known URLs referenced in Supabase
-  const knownUrls = new Set([
-    ...cans.map(c => c.image).filter(Boolean),
-    ...wishes.map(w => w.image).filter(Boolean),
+  // Normalize Blob URLs — Vercel sometimes returns public.blob.vercel-storage.com
+  // but Supabase stores blob.vercel-storage.com (or vice versa). Normalize both.
+  const normalizeUrl = (url) => url?.replace(/^https:\/\/[^/]+\.blob\.vercel-storage\.com/, "BLOB") || "";
+  const normalizePathname = (url) => {
+    try { return new URL(url).pathname; } catch { return url; }
+  };
+
+  // All known URLs referenced in Supabase — indexed both by normalized URL and pathname
+  const knownNormalized = new Set([
+    ...cans.map(c => c.image).filter(Boolean).map(normalizeUrl),
+    ...wishes.map(w => w.image).filter(Boolean).map(normalizeUrl),
   ]);
+  const knownPathnames = new Set([
+    ...cans.map(c => c.image).filter(Boolean).map(normalizePathname),
+    ...wishes.map(w => w.image).filter(Boolean).map(normalizePathname),
+  ]);
+
+  const isKnown = (blobUrl) =>
+    knownNormalized.has(normalizeUrl(blobUrl)) ||
+    knownPathnames.has(normalizePathname(blobUrl));
 
   const scan = async () => {
     setState("scanning");
@@ -2486,7 +2501,7 @@ function OrphanCleanupTool({ T, cans, wishes }) {
 
       const found = blobs.filter(b =>
         b.url && b.url.startsWith("http") &&
-        !knownUrls.has(b.url)
+        !isKnown(b.url)
       );
       addLog(`🗑️ ${found.length} orphaned file${found.length !== 1 ? "s" : ""} not referenced by any can or wish`);
       setOrphans(found);
