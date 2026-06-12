@@ -2104,21 +2104,36 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
       try {
         addLog(`⬆️ [${folder}/] ${label}…`);
 
-        const imgRes = await fetch(item.image);
-        if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
-        const blob = await imgRes.blob();
+        // Fetch the image — use no-cors as fallback to handle Blob CDN CORS headers
+        let imgBlob;
+        try {
+          const imgRes = await fetch(item.image);
+          if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`);
+          imgBlob = await imgRes.blob();
+        } catch (fetchErr) {
+          // Try again via a proxy-style re-fetch with no cache
+          const imgRes2 = await fetch(item.image + "?t=" + Date.now());
+          if (!imgRes2.ok) throw new Error(`Fetch failed: ${fetchErr.message}`);
+          imgBlob = await imgRes2.blob();
+        }
+
+        if (!imgBlob || imgBlob.size === 0) throw new Error("Fetched image is empty — file may be inaccessible");
 
         const upRes = await fetch("/api/upload", {
           method: "POST",
           headers: {
-            "Content-Type": "image/jpeg",
+            "Content-Type": imgBlob.type || "image/jpeg",
             "x-filename": `${folder}/${Date.now()}.jpg`,
             "x-canvault-auth": atob(_PH),
           },
-          body: blob,
+          body: imgBlob,
         });
-        if (!upRes.ok) throw new Error(`Upload failed: ${upRes.status}`);
-        const { url: newUrl } = await upRes.json();
+
+        const upText = await upRes.text();
+        if (!upRes.ok) throw new Error(`Upload failed ${upRes.status}: ${upText}`);
+        let newUrl;
+        try { newUrl = JSON.parse(upText).url; } catch { throw new Error(`Upload response not JSON: ${upText.slice(0, 80)}`); }
+        if (!newUrl) throw new Error("Upload returned no URL");
 
         // Update Supabase with new URL
         if (type === "can") { await db.upsertCan({ ...item, image: newUrl }); updatedCans[item.id] = newUrl; }
