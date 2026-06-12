@@ -614,6 +614,12 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [cropSrc, setCropSrc] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
   const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [dateUnknown, setDateUnknown] = useState(initial.dateUnknown || false);
+  // date picker value as YYYY-MM-DD string
+  const [dateVal, setDateVal] = useState(() => {
+    const ts = initial.addedAt || Date.now();
+    return new Date(ts).toISOString().slice(0, 10);
+  });
   const fileRef = useRef();
 
   const getTagSuggestions = (q) => {
@@ -755,7 +761,19 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
         {tags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setTags(tags.filter(x => x !== t))} />)}
       </div>
 
-      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, price, countries, addedAt: initial.addedAt || Date.now() }); }}
+      <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 6 }}>DATE ADDED</label>
+      <div style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 18 }}>
+        <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} disabled={dateUnknown}
+          style={{ width: "100%", padding: "8px 10px", background: T.bgCard, border: `1.5px solid ${dateUnknown ? T.border : T.border}`, borderRadius: 8, color: dateUnknown ? T.textFaint : T.text, fontFamily: "Georgia,serif", fontSize: 13, marginBottom: 8, opacity: dateUnknown ? 0.4 : 1 }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+          <div onClick={() => setDateUnknown(d => !d)} style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${dateUnknown ? "#C8102E" : T.border}`, background: dateUnknown ? "#C8102E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, color: "#fff", transition: "all 0.15s" }}>
+            {dateUnknown ? "✓" : ""}
+          </div>
+          <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.1em" }}>DATE UNKNOWN — got it before I started tracking</span>
+        </label>
+      </div>
+
+      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, price, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
         disabled={!name.trim()}
         style={{ width: "100%", padding: "13px", background: name.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: name.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: name.trim() ? "pointer" : "not-allowed", boxShadow: name.trim() ? "0 4px 16px #C8102E44" : "none", transition: "all 0.2s" }}>
         {initial.id ? "SAVE CHANGES" : "ADD TO VAULT"}
@@ -802,7 +820,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 24, padding: "4px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
-          ADDED {new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}
+          {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}`}
         </p>
         {resolvedCountries.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
@@ -1566,7 +1584,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
         </div>
       </div>
       <div style={{ color: T.textFaint, fontSize: 10, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", flexShrink: 0 }}>
-        {new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+        {can.dateUnknown ? "?" : new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
       </div>
       <div style={{ color: T.border, fontSize: 16 }}>›</div>
     </div>
@@ -2280,6 +2298,7 @@ function StatsPage({ T }) {
         const thisMonth = now.getMonth();
         const thisDay = now.getDate();
         const onThisDay = cans.filter(c => {
+          if (c.dateUnknown) return false;
           const d = new Date(c.addedAt);
           return d.getMonth() === thisMonth && d.getDate() === thisDay && d.getFullYear() !== now.getFullYear();
         });
