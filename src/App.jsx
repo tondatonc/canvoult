@@ -552,16 +552,16 @@ function TagPill({ tag, active, onClick, onRemove, T, count }) {
   );
 }
 
-function SortBar({ sort, setSort, viewMode, setViewMode, T }) {
+function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
   const sorts = [
-    { v: "newest", l: "Newest" },
-    { v: "oldest", l: "Oldest" },
-    { v: "az", l: "A → Z" },
-    { v: "za", l: "Z → A" },
+    { v: "newest", l: L.sortNewest },
+    { v: "oldest", l: L.sortOldest },
+    { v: "az", l: L.sortAZ },
+    { v: "za", l: L.sortZA },
   ];
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
-      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em" }}>SORT:</span>
+      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em" }}>{L.sortLabel}</span>
       {sorts.map(s => (
         <button key={s.v} onClick={() => setSort(s.v)} style={{
           padding: "4px 12px", borderRadius: "999px",
@@ -573,7 +573,7 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T }) {
         }}>{s.l}</button>
       ))}
       <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-        {[["grid", "⊞ GRID"], ["tile", "▤ TILE"]].map(([v, l]) => (
+        {[[["grid", L.gridView], ["tile", L.tileView]]].flat().map(([v, l]) => (
           <button key={v} onClick={() => setViewMode(v)} style={{
             padding: "4px 12px", borderRadius: "999px",
             fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em",
@@ -1332,7 +1332,7 @@ function LoadingSpinner({ T }) {
 
 // ─── COLLECTION PAGE ──────────────────────────────────────────────────────────
 
-function CollectionPage({ T, isAdmin }) {
+function CollectionPage({ T, L, isAdmin }) {
   const [cans, setCans] = useState([]);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -1449,21 +1449,21 @@ function CollectionPage({ T, isAdmin }) {
       {/* Tag filters */}
       {allTags.length > 0 && (
         <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>FILTER BY TAG</p>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>clear</span>}
+            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
           </div>
         </div>
       )}
 
       {/* Sort + view */}
-      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} />
+      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
 
       {/* Country filter */}
       {allCountries.length > 0 && (
         <div style={{ marginBottom: 10, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>🌍 FILTER BY COUNTRY</p>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
               const count = cans.filter(c => (c.countries || []).includes(country)).length;
@@ -1483,21 +1483,21 @@ function CollectionPage({ T, isAdmin }) {
       {/* Stats + Add */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
-          {allFiltered.length === cans.length ? `${cans.length} CANS IN VAULT` : `SHOWING ${allFiltered.length} OF ${cans.length}`}
+          {allFiltered.length === cans.length ? L.cansInVault(cans.length) : L.showingOf(allFiltered.length, cans.length)}
         </span>
         {(activeTags.length > 0 || activeCountry) && (
-          <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>clear filters</button>
+          <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clearFilters}</button>
         )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {cans.length > 0 && (
-            <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🎲 RANDOM</button>
+            <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.random}</button>
           )}
           {isAdmin && (
             <>
-              <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>📦 BULK</button>
-              <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🏷️ TAGS</button>
-              <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>🎨 COLORS</button>
-              <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD CAN</button>
+              <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulk}</button>
+              <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulkTags}</button>
+              <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.colors}</button>
+              <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addCan}</button>
             </>
           )}
         </div>
@@ -1507,7 +1507,7 @@ function CollectionPage({ T, isAdmin }) {
       {allFiltered.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>🫙</div>
-          <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>No cans found</p>
+          <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>{L.noCansFound}</p>
         </div>
       ) : viewMode === "grid" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(155px,1fr))", gap: 16 }}>
@@ -1593,7 +1593,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
 
 // ─── WISHLIST PAGE ────────────────────────────────────────────────────────────
 
-function WishlistPage({ T, isAdmin }) {
+function WishlistPage({ T, L, isAdmin }) {
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("newest");
@@ -1645,18 +1645,18 @@ function WishlistPage({ T, isAdmin }) {
       <div style={{ background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 36 }}>⭐</div>
         <div>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: T.text, fontWeight: 700 }}>My Wishlist</div>
-          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginTop: 2 }}>CANS I WANT TO FIND · {wishes.length} ITEMS</div>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: T.text, fontWeight: 700 }}>{L.wishlistTitle}</div>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginTop: 2 }}>{L.wishlistSub} · {wishes.length}</div>
         </div>
       </div>
 
       {loading ? <LoadingSpinner T={T} /> : <>
-      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} />
+      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
 
       {/* Country filter */}
       {allCountries.length > 0 && (
         <div style={{ marginBottom: 10, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>🌍 FILTER BY COUNTRY</p>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
               const count = wishes.filter(w => (w.countries || []).includes(country)).length;
@@ -1683,7 +1683,7 @@ function WishlistPage({ T, isAdmin }) {
       {/* Tag filter */}
       {allTags.length > 0 && (
         <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>FILTER BY TAG</p>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
           </div>
@@ -1693,24 +1693,24 @@ function WishlistPage({ T, isAdmin }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
-            {sorted.length === wishes.length ? `${wishes.length} ITEMS` : `${sorted.length} OF ${wishes.length}`}
+            {sorted.length === wishes.length ? L.wishCount(wishes.length) : L.showingOf(sorted.length, wishes.length)}
           </span>
           {activeFilters > 0 && (
             <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>
-              clear {activeFilters} filter{activeFilters > 1 ? "s" : ""}
+              {L.clearFilters}
             </button>
           )}
         </div>
-        {isAdmin && <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD WISH</button>}
+        {isAdmin && <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addWish}</button>}
       </div>
 
       {sorted.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>⭐</div>
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>
-            {activeFilters > 0 ? `No wishes in ${activeCountry || "selected filters"}` : "No wishes yet"}
+            {activeFilters > 0 ? L.noWishesFiltered : L.noWishes}
           </p>
-          {isAdmin && activeFilters === 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>Add cans you're hunting for!</p>}
+          {isAdmin && activeFilters === 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>{L.noWishesHint}</p>}
         </div>
       ) : viewMode === "grid" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(155px,1fr))", gap: 16 }}>
@@ -1890,7 +1890,7 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
 
 // ─── CAN WALL PAGE ────────────────────────────────────────────────────────────
 
-function CanWallPage({ T, isAdmin }) {
+function CanWallPage({ T, L, isAdmin }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addModal, setAddModal] = useState(false);
@@ -1969,23 +1969,23 @@ function CanWallPage({ T, isAdmin }) {
       <div style={{ background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 36 }}>📸</div>
         <div>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: T.text, fontWeight: 700 }}>My Can Wall</div>
-          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginTop: 2 }}>SHELF & WALL PHOTOS · {photos.length} PHOTOS</div>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: T.text, fontWeight: 700 }}>{L.canwallTitle}</div>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginTop: 2 }}>{L.canWallSub} · {photos.length}</div>
         </div>
         {isAdmin && (
-          <button onClick={() => setAddModal(true)} style={{ marginLeft: "auto", background: "#C8102E", border: "none", borderRadius: "999px", padding: "8px 18px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>+ ADD PHOTO</button>
+          <button onClick={() => setAddModal(true)} style={{ marginLeft: "auto", background: "#C8102E", border: "none", borderRadius: "999px", padding: "8px 18px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addPhoto}</button>
         )}
       </div>
 
       {loading ? <LoadingSpinner T={T} /> : photos.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 20px", border: `2px dashed ${T.border}`, borderRadius: 14, background: T.stripe }}>
           <div style={{ fontSize: 52, marginBottom: 12 }}>🗄️</div>
-          <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 20, fontStyle: "italic", marginBottom: 6 }}>No wall photos yet</p>
+          <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 20, fontStyle: "italic", marginBottom: 6 }}>{L.noWallPhotos}</p>
           {isAdmin
-            ? <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12 }}>Upload a photo of your collection shelves!</p>
-            : <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12 }}>Sign in to add photos.</p>}
+            ? <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12 }}>{L.noWallPhotosHint}</p>
+            : <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12 }}>{L.signInToAdd}</p>}
           {isAdmin && (
-            <button onClick={() => setAddModal(true)} style={{ marginTop: 18, background: "#C8102E", border: "none", borderRadius: "999px", padding: "10px 24px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>UPLOAD FIRST PHOTO</button>
+            <button onClick={() => setAddModal(true)} style={{ marginTop: 18, background: "#C8102E", border: "none", borderRadius: "999px", padding: "10px 24px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>{L.uploadFirst}</button>
           )}
         </div>
       ) : (
@@ -2000,7 +2000,6 @@ function CanWallPage({ T, isAdmin }) {
               {(photo.caption || true) && (
                 <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-
                     {photo.caption && <div style={{ fontFamily: "Georgia,serif", fontStyle: "italic", fontSize: 13, color: T.text, marginBottom: 2 }}>{photo.caption}</div>}
                     <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{new Date(photo.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
                   </div>
@@ -2020,7 +2019,7 @@ function CanWallPage({ T, isAdmin }) {
       {/* Add photo modal */}
       {addModal && (
         <ModalShell onClose={() => { setAddModal(false); setNewImage(null); setNewCaption(""); }} T={T}>
-          <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Add Wall Photo</div>
+          <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>{L.addPhotoTitle}</div>
           <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
           <div
             onDragOver={e => { e.preventDefault(); setDrag(true); }}
@@ -2029,21 +2028,21 @@ function CanWallPage({ T, isAdmin }) {
             style={{ border: `2px dashed ${drag ? "#C8102E" : T.border}`, borderRadius: 12, padding: 16, textAlign: "center", cursor: "pointer", marginBottom: 14, background: drag ? "#C8102E08" : T.bgInput, transition: "all 0.2s", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", overflow: "hidden" }}>
             <input ref={fileRef} type="file" accept="image/*,image/heic,image/heif" style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", zIndex: 2 }} onChange={e => handleFile(e.target.files[0])} />
             {uploading
-              ? <><span style={{ fontSize: 36, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>UPLOADING…</p></>
+              ? <><span style={{ fontSize: 36, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9 }}>{L.loading}</p></>
               : newImage
                 ? <img src={newImage} alt="preview" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 8, objectFit: "contain", position: "relative", zIndex: 1 }} />
-                : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>TAP TO UPLOAD PHOTO</p><p style={{ color: T.textFaint, fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic" }}>Your shelf, your wall, your display</p></>}
+                : <><span style={{ fontSize: 40 }}>🖼️</span><p style={{ color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.12em" }}>{L.tapToUpload}</p></>}
           </div>
           {newImage && !uploading && (
-            <button onClick={() => { setNewImage(null); fileRef.current.click(); }} style={{ width: "100%", marginBottom: 10, padding: "6px", background: "transparent", border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>✂️ CHANGE & RE-CROP</button>
+            <button onClick={() => { setNewImage(null); fileRef.current.click(); }} style={{ width: "100%", marginBottom: 10, padding: "6px", background: "transparent", border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>{L.changeRecrop}</button>
           )}
           {uploadErr && <p style={{ color: "#FF6B00", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginBottom: 8 }}>{uploadErr}</p>}
-          <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 5 }}>CAPTION (optional)</label>
+          <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 5 }}>{L.caption}</label>
           <input value={newCaption} onChange={e => setNewCaption(e.target.value)} placeholder="e.g. My bedroom shelf, Jan 2025"
             style={{ width: "100%", padding: "10px 13px", marginBottom: 16, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
           <button onClick={addPhoto} disabled={!newImage}
             style={{ width: "100%", padding: "13px", background: newImage ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: newImage ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: newImage ? "pointer" : "not-allowed", boxShadow: newImage ? "0 4px 16px #C8102E44" : "none", transition: "all 0.2s" }}>
-            ADD TO WALL
+            {L.addToWall}
           </button>
         </ModalShell>
       )}
@@ -2053,7 +2052,7 @@ function CanWallPage({ T, isAdmin }) {
         <div onClick={() => setViewPhoto(null)} style={{ position: "fixed", inset: 0, zIndex: 300, background: "#000000ee", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20, cursor: "zoom-out" }}>
           <img src={viewPhoto.image} alt={viewPhoto.caption || ""} style={{ maxWidth: "95vw", maxHeight: "80vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 0 80px #00000099" }} />
           {viewPhoto.caption && <p style={{ fontFamily: "'Satisfy',cursive", color: "#FFE8D0", fontSize: 22, marginTop: 16, textShadow: "0 2px 8px #000" }}>{viewPhoto.caption}</p>}
-          <p style={{ fontFamily: "'Oswald',sans-serif", color: "#ffffff55", fontSize: 10, letterSpacing: "0.2em", marginTop: 8 }}>CLICK ANYWHERE TO CLOSE</p>
+          <p style={{ fontFamily: "'Oswald',sans-serif", color: "#ffffff55", fontSize: 10, letterSpacing: "0.2em", marginTop: 8 }}>{L.clickToClose}</p>
         </div>
       )}
     </div>
@@ -2171,7 +2170,7 @@ function MigrateBlobTool({ T, cans, onDone }) {
 
 // ─── STATS PAGE ───────────────────────────────────────────────────────────────
 
-function StatsPage({ T }) {
+function StatsPage({ T, L }) {
   const [cans, setCans] = useState([]);
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2334,7 +2333,7 @@ function StatsPage({ T }) {
       {/* Export */}
       <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
         <button onClick={exportJSON} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "12px 28px", color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 13, letterSpacing: "0.15em", cursor: "pointer" }}>
-          💾 EXPORT BACKUP JSON
+          {L.exportBtn}
         </button>
         <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Downloads a JSON file with your full collection + wishlist</p>
 
@@ -2377,13 +2376,14 @@ export default function App() {
     collectionTitle: "Sbírka plechovek", wishlistTitle: "Přání", canwallTitle: "Stěna plechovek", statsTitle: "Statistiky",
     collectionSub: "Kolekce plechovek", tagline: "KAŽDÁ PLECHOVKA MÁ PŘÍBĚH",
     signIn: "🔐 Přihlásit", signOut: "Odhlásit",
-    addCan: "+ Přidat", bulk: "📦 Hromadně", colors: "🎨 Barvy",
+    addCan: "+ Přidat", bulk: "📦 Hromadně", bulkTags: "🏷️ Štítky", colors: "🎨 Barvy",
     random: "🎲 Náhodná", filterTag: "FILTROVAT DLE ŠTÍTKU", filterCountry: "🌍 FILTROVAT DLE ZEMĚ",
-    clearFilters: "zrušit filtry", cansInVault: (n) => `${n} PLECHOVEK VE SBÍRCE`,
+    clear: "zrušit", clearFilters: "zrušit filtry", cansInVault: (n) => `${n} PLECHOVEK VE SBÍRCE`,
     showingOf: (n, t) => `ZOBRAZENO ${n} Z ${t}`,
     noCansFound: "Žádné plechovky nenalezeny",
     wishlistSub: "PLECHOVKY, KTERÉ CHCI NAJÍT",
-    addWish: "+ Přidat přání", noWishes: "Žádná přání", noWishesHint: "Přidej plechovky, které hledáš!",
+    wishCount: (n) => `${n} POLOŽEK`,
+    addWish: "+ Přidat přání", noWishes: "Žádná přání", noWishesFiltered: "Žádná přání v tomto filtru", noWishesHint: "Přidej plechovky, které hledáš!",
     markFound: "✅ Mám ji!", edit: "Upravit", remove: "Odstranit", copy: "📋 Kopírovat", share: "🔗 Sdílet",
     linkCopied: "✅ Odkaz zkopírován!",
     addCanTitle: "Přidat plechovku", editCanTitle: "Upravit",
@@ -2393,12 +2393,14 @@ export default function App() {
     addWishTitle: "Přidat přání", canWallSub: "FOTKY POLICE A STĚNY",
     addPhoto: "+ Přidat foto", uploadFirst: "NAHRÁT PRVNÍ FOTO",
     addPhotoTitle: "Přidat foto na stěnu", caption: "POPIS (volitelný)", addToWall: "PŘIDAT NA STĚNU",
+    noWallPhotos: "Zatím žádné fotky", noWallPhotosHint: "Nahraj fotku své police nebo výstavky!", signInToAdd: "Přihlas se pro přidání fotek.",
+    clickToClose: "KLIKNI KAMKOLIV PRO ZAVŘENÍ",
     signInTitle: "Vítej!", signInSub: "PŘÍSTUP POUZE PRO SBĚRATELE", signInBtn: "PŘIHLÁSIT",
     wrongPw: "Špatné heslo. Zkus znovu.", collectorsOnly: "Jen pro sběratele 🥤",
-    loading: "NAČÍTÁNÍ…", noWallPhotos: "Zatím žádné fotky",
+    loading: "NAČÍTÁNÍ…",
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
-    sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A",
+    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
     foundItTitle: "NALEZENO", est: "★ ZAL. 2020 ★", every: "★ KAŽDÁ PLECHOVKA SE POČÍTÁ ★",
@@ -2408,14 +2410,15 @@ export default function App() {
     collectionTitle: "The Collection", wishlistTitle: "Wishlist", canwallTitle: "Can Wall", statsTitle: "Stats",
     collectionSub: "SODA CAN COLLECTION", tagline: "★ EVERY CAN TELLS A STORY ★",
     signIn: "🔐 Sign in", signOut: "Sign out",
-    addCan: "+ Add Can", bulk: "📦 Bulk", colors: "🎨 Colors",
+    addCan: "+ Add Can", bulk: "📦 Bulk", bulkTags: "🏷️ Tags", colors: "🎨 Colors",
     random: "🎲 Random", filterTag: "FILTER BY TAG", filterCountry: "🌍 FILTER BY COUNTRY",
-    clearFilters: "clear filters", cansInVault: (n) => `${n} CANS IN VAULT`,
+    clear: "clear", clearFilters: "clear filters", cansInVault: (n) => `${n} CANS IN VAULT`,
     showingOf: (n, t) => `SHOWING ${n} OF ${t}`,
     noCansFound: "No cans found",
     wishlistSub: "CANS I WANT TO FIND",
-    addWish: "+ Add Wish", noWishes: "No wishes yet", noWishesHint: "Add cans you're hunting for!",
-    markFound: "✅ Found it!", edit: "Edit", remove: "Remove", copy: "📋 Copy", share: "🔗 Share",
+    wishCount: (n) => `${n} ITEMS`,
+    addWish: "+ Add Wish", noWishes: "No wishes yet", noWishesFiltered: "No wishes match these filters", noWishesHint: "Add cans you're hunting for!",
+    markFound: "✅ Found it!", edit: "Edit", remove: "Remove", copy: "📋 Copy", share: "🔗 Share Can",
     linkCopied: "✅ Link copied!",
     addCanTitle: "Add a Can", editCanTitle: "Edit",
     saveChanges: "SAVE CHANGES", addToVault: "ADD TO VAULT",
@@ -2424,12 +2427,14 @@ export default function App() {
     addWishTitle: "Add a Wish", canWallSub: "SHELF & WALL PHOTOS",
     addPhoto: "+ Add Photo", uploadFirst: "UPLOAD FIRST PHOTO",
     addPhotoTitle: "Add Wall Photo", caption: "CAPTION (optional)", addToWall: "ADD TO WALL",
+    noWallPhotos: "No wall photos yet", noWallPhotosHint: "Upload a photo of your collection shelves!", signInToAdd: "Sign in to add photos.",
+    clickToClose: "CLICK ANYWHERE TO CLOSE",
     signInTitle: "Welcome!", signInSub: "COLLECTOR ACCESS ONLY", signInBtn: "SIGN IN",
     wrongPw: "Incorrect password. Please try again.", collectorsOnly: "Collectors only 🥤",
-    loading: "LOADING…", noWallPhotos: "No wall photos yet",
+    loading: "LOADING…",
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
-    sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A",
+    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
     foundItTitle: "FOUND IT", est: "★ EST. 2020 ★", every: "★ EVERY CAN COUNTS ★",
