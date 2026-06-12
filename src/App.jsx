@@ -2081,6 +2081,8 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
   const [state, setState] = useState("idle"); // idle | running | done
   const [log, setLog] = useState([]);
   const [count, setCount] = useState({ done: 0, fail: 0, total: 0 });
+  const [brokenItems, setBrokenItems] = useState(null); // null = not scanned yet
+  const [scanning, setScanning] = useState(false);
 
   const addLog = (msg) => setLog(p => [...p, msg]);
 
@@ -2093,6 +2095,26 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
     ...wishes.filter(w => needsFolder(w.image)).map(w => ({ item: w, type: "wish", folder: "wishlist", label: w.name })),
     ...(wallPhotos || []).filter(p => needsFolder(p.image)).map(p => ({ item: p, type: "wall", folder: "wall", label: p.caption || p.id })),
   ];
+
+  // Check for items whose image URL returns a 404 (prev migration uploaded but didn't update Supabase)
+  const scanBroken = async () => {
+    setScanning(true);
+    const allItems = [
+      ...cans.filter(c => c.image?.startsWith("http")).map(c => ({ item: c, type: "can", label: c.name })),
+      ...wishes.filter(w => w.image?.startsWith("http")).map(w => ({ item: w, type: "wish", label: w.name })),
+    ];
+    const broken = [];
+    for (const { item, type, label } of allItems) {
+      try {
+        const res = await fetch(item.image, { method: "HEAD" });
+        if (!res.ok) broken.push({ item, type, label, status: res.status });
+      } catch {
+        broken.push({ item, type, label, status: "network error" });
+      }
+    }
+    setBrokenItems(broken);
+    setScanning(false);
+  };
 
   const run = async () => {
     if (toMigrate.length === 0) { addLog("✅ All images already in folders — nothing to migrate!"); return; }
@@ -2155,8 +2177,7 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
     onDone({ cans: updatedCans, wishes: updatedWishes, wall: updatedWall });
   };
 
-  if (toMigrate.length === 0 && state === "idle") return null;
-
+  // Always render — even if nothing to migrate, the broken checker is useful
   // Group counts by folder for the summary
   const byFolder = toMigrate.reduce((acc, { folder }) => { acc[folder] = (acc[folder] || 0) + 1; return acc; }, {});
 
@@ -2167,19 +2188,62 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
       </p>
       {state === "idle" && (
         <>
-          <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 8 }}>
-            Found <strong>{toMigrate.length}</strong> image{toMigrate.length !== 1 ? "s" : ""} in the Blob root (no folder). This moves them into the correct folders and updates Supabase.
-          </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {Object.entries(byFolder).map(([folder, n]) => (
-              <span key={folder} style={{ padding: "3px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "999px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.08em" }}>
-                {folder === "collection" ? "🥤" : folder === "wishlist" ? "⭐" : "📸"} {n} → <code>{folder}/</code>
-              </span>
-            ))}
+          {toMigrate.length > 0 ? (
+            <>
+              <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 8 }}>
+                Found <strong>{toMigrate.length}</strong> image{toMigrate.length !== 1 ? "s" : ""} in the Blob root (no folder). This moves them into the correct folders and updates Supabase.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                {Object.entries(byFolder).map(([folder, n]) => (
+                  <span key={folder} style={{ padding: "3px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "999px", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.08em" }}>
+                    {folder === "collection" ? "🥤" : folder === "wishlist" ? "⭐" : "📸"} {n} → <code>{folder}/</code>
+                  </span>
+                ))}
+              </div>
+              <button onClick={run} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
+                ▶ MIGRATE {toMigrate.length} IMAGE{toMigrate.length !== 1 ? "S" : ""}
+              </button>
+            </>
+          ) : (
+            <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: "#22C55E", fontStyle: "italic", marginBottom: 10 }}>✅ All images already in folders.</p>
+          )}
+
+          {/* Broken image scanner */}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1.5px dashed ${T.border}` }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 6 }}>🔍 BROKEN IMAGE CHECKER</p>
+            <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textFaint, fontStyle: "italic", marginBottom: 8 }}>
+              Checks if any Supabase records point to deleted/missing Blob files (e.g. from a failed migration).
+            </p>
+            {brokenItems === null && !scanning && (
+              <button onClick={scanBroken} style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8, padding: "7px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", cursor: "pointer" }}>
+                CHECK FOR BROKEN IMAGES
+              </button>
+            )}
+            {scanning && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>⏳ Checking URLs…</p>}
+            {brokenItems !== null && !scanning && (
+              brokenItems.length === 0
+                ? <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: "#22C55E", fontStyle: "italic" }}>✅ No broken image URLs found!</p>
+                : <div>
+                    <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#FF6B00", letterSpacing: "0.1em", marginBottom: 8 }}>
+                      ⚠️ {brokenItems.length} RECORD{brokenItems.length !== 1 ? "S" : ""} WITH BROKEN IMAGE URL
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                      {brokenItems.map(({ item, type, label, status }) => (
+                        <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#FF6B0011", border: `1.5px solid #FF6B0033`, borderRadius: 7 }}>
+                          <span style={{ fontSize: 14 }}>{type === "can" ? "🥤" : "⭐"}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#FF6B00", letterSpacing: "0.05em" }}>{status} · {item.image?.split("/").slice(-2).join("/")}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textFaint, fontStyle: "italic" }}>
+                      Open each item and re-upload the photo to fix it.
+                    </p>
+                  </div>
+            )}
           </div>
-          <button onClick={run} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
-            ▶ MIGRATE {toMigrate.length} IMAGE{toMigrate.length !== 1 ? "S" : ""}
-          </button>
         </>
       )}
       {(state === "running" || state === "done") && (
