@@ -5,6 +5,18 @@ Live: canvault.vercel.app | Repo: github.com/tondatonc/canvoult
 
 ---
 
+## Credentials & Access
+
+| Service | Value |
+|---|---|
+| GitHub token | stored in Claude project memory (not committed) |
+| Supabase URL | https://nvqckeaulnmkmbllubck.supabase.co |
+| Supabase service role key | eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52cWNrZWF1bG5ta21ibGx1YmNrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODE3MTkwOCwiZXhwIjoyMDkzNzQ3OTA4fQ.plNf3CTAg6zBHEMtDIESRxZ27SfEbfqs79gDC3IOgzM |
+
+**Note:** Claude's bash sandbox cannot reach `supabase.co` directly (not in egress allowlist). Supabase access must go through the app's existing Vercel API endpoints, or via the Supabase SQL editor in the dashboard. GitHub API (`api.github.com`) works fine from bash.
+
+---
+
 ## Tech Stack
 
 | Layer | Tech |
