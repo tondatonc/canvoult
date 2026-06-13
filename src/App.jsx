@@ -135,7 +135,10 @@ async function compressCanPhoto(file) {
       }
       const canvas = document.createElement("canvas");
       canvas.width = width; canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      const ctx2d = canvas.getContext("2d");
+      ctx2d.fillStyle = "#ffffff";
+      ctx2d.fillRect(0, 0, width, height);
+      ctx2d.drawImage(img, 0, 0, width, height);
       const target = 150 * 1024; // 150 KB
       const tryQ = (q) => {
         canvas.toBlob(blob => {
@@ -185,7 +188,7 @@ async function compressWallPhoto(file) {
 function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }) {
   const imgRef = useRef();
   const [dragging, setDragging] = useState(false);
-  const [box, setBox] = useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+  const [box, setBox] = useState({ x: 0, y: 0, w: 1, h: 1 });
   const [sizeInfo, setSizeInfo] = useState({ px: "", kb: "…" });
   const [estimating, setEstimating] = useState(false);
   const [activeHandle, setActiveHandle] = useState(null); // which handle is being dragged
@@ -280,7 +283,10 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
     const ch = Math.round(img.naturalHeight * box.h);
     const canvas = document.createElement("canvas");
     canvas.width = cw; canvas.height = ch;
-    canvas.getContext("2d").drawImage(img,
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(img,
       Math.round(img.naturalWidth * box.x), Math.round(img.naturalHeight * box.y),
       cw, ch, 0, 0, cw, ch);
     canvas.toBlob(blob => onCrop(new File([blob], "cropped.jpg", { type: "image/jpeg" })), "image/jpeg", quality);
@@ -422,10 +428,10 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
         </div>
 
         {/* Crop area */}
-        <div className="crop-area" style={{ position: "relative", width: "100%", touchAction: "none", userSelect: "none", borderRadius: 8, overflow: "hidden" }}
+        <div className="crop-area" style={{ position: "relative", width: "100%", touchAction: "none", userSelect: "none", borderRadius: 8, overflow: "hidden", maxHeight: "55vh" }}
           onMouseMove={onMoveWithRatio} onMouseUp={onUp} onMouseLeave={onUp}
           onTouchMove={onMoveWithRatio} onTouchEnd={onUp}>
-          <img ref={imgRef} src={src} alt="crop" style={{ width: "100%", display: "block" }}
+          <img ref={imgRef} src={src} alt="crop" style={{ width: "100%", height: "100%", maxHeight: "55vh", objectFit: "contain", display: "block", background: "transparent" }}
             onLoad={() => setBox(b => ({ ...b }))} />
           {/* Dark overlay */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
