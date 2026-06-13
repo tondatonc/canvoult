@@ -432,7 +432,39 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
           onMouseMove={onMoveWithRatio} onMouseUp={onUp} onMouseLeave={onUp}
           onTouchMove={onMoveWithRatio} onTouchEnd={onUp}>
           <img ref={imgRef} src={src} alt="crop" style={{ width: "100%", height: "100%", maxHeight: "55vh", objectFit: "contain", display: "block", background: "transparent" }}
-            onLoad={() => setBox(b => ({ ...b }))} />
+            onLoad={() => {
+              const img = imgRef.current;
+              if (!img) return;
+              // Try to auto-detect content bounds for transparent PNGs
+              try {
+                const offscreen = document.createElement('canvas');
+                offscreen.width = img.naturalWidth;
+                offscreen.height = img.naturalHeight;
+                const ctx = offscreen.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const { data: px, width: W, height: H } = ctx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+                let minX = W, minY = H, maxX = 0, maxY = 0, hasTransparency = false;
+                for (let y = 0; y < H; y++) {
+                  for (let x = 0; x < W; x++) {
+                    const a = px[(y * W + x) * 4 + 3];
+                    if (a < 10) { hasTransparency = true; continue; }
+                    if (x < minX) minX = x; if (x > maxX) maxX = x;
+                    if (y < minY) minY = y; if (y > maxY) maxY = y;
+                  }
+                }
+                if (hasTransparency && maxX > minX && maxY > minY) {
+                  // Add 1px padding, clamp to image bounds
+                  const pad = 2;
+                  minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+                  maxX = Math.min(W - 1, maxX + pad); maxY = Math.min(H - 1, maxY + pad);
+                  setBox({ x: minX / W, y: minY / H, w: (maxX - minX) / W, h: (maxY - minY) / H });
+                } else {
+                  setBox({ x: 0, y: 0, w: 1, h: 1 });
+                }
+              } catch {
+                setBox({ x: 0, y: 0, w: 1, h: 1 });
+              }
+            }} />
           {/* Dark overlay */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: `${box.y * 100}%`, background: "#00000077" }} />
