@@ -244,3 +244,7 @@ UPDATE wishlist SET countries = ARRAY[country] WHERE country IS NOT NULL AND cou
 - **Transparent PNG black background**: Canvas toBlob with image/jpeg flattens alpha to black. Fix: fill white before drawImage in both doCrop and compressCanPhoto.
 - **Default crop box auto-trimming**: Was x:0.1, y:0.1, w:0.8, h:0.8 (cropped 10% off each edge). Fixed to x:0, y:0, w:1, h:1 (full image selected by default).
 - **Tall image overflow in crop modal**: No height limit on crop area. Fixed with maxHeight:55vh on crop-area div and img element.
+
+## Auto-crop transparent PNGs (June 2026)
+
+When the crop modal loads a PNG with transparency, it scans pixel alpha values via an offscreen canvas and automatically sets the crop box to the tightest bounding box of non-transparent pixels (alpha >= 10), with 2px padding. Falls back to full image if no transparency is detected or if canvas throws (cross-origin etc). Logic is in the img onLoad handler inside CropModal.
