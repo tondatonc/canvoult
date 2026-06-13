@@ -237,3 +237,10 @@ UPDATE wishlist SET countries = ARRAY[country] WHERE country IS NOT NULL AND cou
 - Vercel auto-deploys ~45s after push
 - Always update this CLAUDE.md when adding features or discovering gotchas
 - GitHub token in project instructions
+
+
+## Crop Modal — Known Issues & Fixes (June 2026)
+
+- **Transparent PNG black background**: Canvas toBlob with image/jpeg flattens alpha to black. Fix: fill white before drawImage in both doCrop and compressCanPhoto.
+- **Default crop box auto-trimming**: Was x:0.1, y:0.1, w:0.8, h:0.8 (cropped 10% off each edge). Fixed to x:0, y:0, w:1, h:1 (full image selected by default).
+- **Tall image overflow in crop modal**: No height limit on crop area. Fixed with maxHeight:55vh on crop-area div and img element.
