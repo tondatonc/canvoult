@@ -2104,14 +2104,14 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
       ...wishes.filter(w => w.image?.startsWith("http")).map(w => ({ item: w, type: "wish", label: w.name })),
     ];
     const broken = [];
-    for (const { item, type, label } of allItems) {
+    await Promise.all(allItems.map(async ({ item, type, label }) => {
       try {
-        const res = await fetch(item.image, { method: "HEAD" });
+        const res = await fetch(item.image, { method: "HEAD", cache: "no-store" });
         if (!res.ok) broken.push({ item, type, label, status: res.status });
       } catch {
         broken.push({ item, type, label, status: "network error" });
       }
-    }
+    }));
     setBrokenItems(broken);
     setScanning(false);
   };
@@ -2498,13 +2498,6 @@ function OrphanCleanupTool({ T, cans, wishes }) {
       if (!res.ok) throw new Error(`API returned ${res.status} — make sure api/list-blobs.mjs exists`);
       const { blobs } = await res.json();
       addLog(`📦 Found ${blobs.length} files in Blob storage`);
-
-      // Debug: log a sample Blob URL vs a sample Supabase URL so we can see the format difference
-      if (blobs.length > 0) addLog(`🔎 Sample Blob URL: ${blobs[0].url}`);
-      const sampleWish = wishes.find(w => w.image?.startsWith("http"));
-      if (sampleWish) addLog(`🔎 Sample Supabase wish URL: ${sampleWish.image}`);
-      const sampleCan = cans.find(c => c.image?.startsWith("http"));
-      if (sampleCan) addLog(`🔎 Sample Supabase can URL: ${sampleCan.image}`);
 
       const found = blobs.filter(b =>
         b.url && b.url.startsWith("http") &&
