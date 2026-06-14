@@ -272,3 +272,20 @@ CropModal uses originalFile (if PNG) to scan raw alpha before JPEG conversion.
 - Shared tag input has dropdown autocomplete (same style as AddEditModal) — filters allTags, ArrowDown selects first, Escape closes
 - Shared country input replaced with the existing CountryInput component — full flag + name autocomplete from COUNTRY_LIST
 - CountryInput onChange diff logic: detects added/removed country and propagates to all non-done queue items
+
+
+## Recently Implemented Features (June 2026)
+
+### Bulk Upload Improvements
+- **Auto-crop**: When photos are selected for bulk upload, the crop modal automatically opens for each photo sequentially. After cropping one, the next opens automatically. Manual crop button (✂️) still available if needed.
+- **Per-item date editors**: Each can in the bulk upload queue has its own date/unknown-date control inline. "APPLY TO ALL" button copies a per-item date to all remaining cans.
+
+### Bulk Edit Modal (was "Bulk Tags", now "Bulk Edit")
+- **Countries bulk add**: New 🌍 COUNTRIES TO ADD section using CountryInput — adds selected countries to all selected cans.
+- **Tag filter for can list**: 🔍 FILTER LIST BY TAG section — tap tags to narrow the visible can list. "SELECT VISIBLE" selects only filtered cans. Useful for bulk-editing a subset (e.g., all cans tagged "330ml").
+- `onSave` now includes updated `countries` field.
+
+### BulkTagModal signature
+```jsx
+<BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { ... }} onClose={() => setModal(null)} />
+```
