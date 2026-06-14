@@ -265,3 +265,10 @@ originalFile prop now passed to CropModal from all call sites:
 - EditModal/WallPhoto: pendingEditFile
 - BulkUpload: queue[cropIdx].file
 CropModal uses originalFile (if PNG) to scan raw alpha before JPEG conversion.
+
+## Bulk Upload — Tag & Country Autocomplete (June 2026)
+
+- BulkUploadModal now accepts allTags prop (passed from call site)
+- Shared tag input has dropdown autocomplete (same style as AddEditModal) — filters allTags, ArrowDown selects first, Escape closes
+- Shared country input replaced with the existing CountryInput component — full flag + name autocomplete from COUNTRY_LIST
+- CountryInput onChange diff logic: detects added/removed country and propagates to all non-done queue items
