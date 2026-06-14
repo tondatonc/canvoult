@@ -940,8 +940,19 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
   const [sharedDateUnknown, setSharedDateUnknown] = useState(false);
   const [sharedDate, setSharedDate] = useState("");
   const [cropIdx, setCropIdx] = useState(null); // index of item being cropped
+  const [autoCropQueue, setAutoCropQueue] = useState([]); // indices waiting for auto-crop
   const [perTagInput, setPerTagInput] = useState({}); // {idx: inputValue}
+  const [perItemDates, setPerItemDates] = useState({}); // {idx: {date,dateUnknown}}
   const fileRef = useRef();
+
+  // Auto-crop: pop next index from queue and open crop modal
+  useEffect(() => {
+    if (cropIdx === null && autoCropQueue.length > 0) {
+      const [next, ...rest] = autoCropQueue;
+      setAutoCropQueue(rest);
+      setCropIdx(next);
+    }
+  }, [cropIdx, autoCropQueue]);
 
   const handleFiles = (files) => {
     const items = Array.from(files).map(f => ({
@@ -957,6 +968,8 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
       uploading: false, done: false, url: null, err: null,
     }));
     setQueue(items);
+    // Auto-crop: queue all indices for cropping
+    setAutoCropQueue(items.map((_, idx) => idx));
   };
 
   const getTagSuggestions = (q) => {
@@ -986,7 +999,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
   const handleCropped = (i, croppedFile) => {
     const url = URL.createObjectURL(croppedFile);
     updateItem(i, { croppedFile, croppedUrl: url });
-    setCropIdx(null);
+    setCropIdx(null); // useEffect will pick next from autoCropQueue
   };
 
   const uploadAll = async () => {
@@ -1005,7 +1018,10 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
         if (!res.ok) throw new Error(`${res.status}`);
         const { url } = await res.json();
         updateItem(i, { uploading: false, done: true, url });
-        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: item.dateUnknown || false, image: url, addedAt: item.dateUnknown ? Date.now() : (item.date ? new Date(item.date).getTime() || Date.now() : Date.now()) });
+        const pd = perItemDates[i] || {};
+        const iDate = pd.date !== undefined ? pd.date : item.date;
+        const iUnknown = pd.dateUnknown !== undefined ? pd.dateUnknown : item.dateUnknown;
+        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
       } catch (err) {
         updateItem(i, { uploading: false, err: err.message });
       }
@@ -1158,11 +1174,47 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
                         <button onClick={() => addItemTag(i)} style={{ background: "#C8102E", border: "none", borderRadius: 6, padding: "0 10px", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>+</button>
                       </div>
                     )}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 5 }}>
                       {item.tags.map(t => (
                         <TagPill key={t} tag={t} T={T} onRemove={item.done ? null : () => updateItem(i, { tags: item.tags.filter(x => x !== t) })} />
                       ))}
                     </div>
+                    {/* Per-item date */}
+                    {!item.done && (() => {
+                      const pd = perItemDates[i] || {};
+                      const isUnknown = pd.dateUnknown !== undefined ? pd.dateUnknown : item.dateUnknown;
+                      const dateVal = pd.date !== undefined ? pd.date : item.date;
+                      return (
+                        <div style={{ marginTop: 4, padding: "5px 8px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.08em", flexShrink: 0 }}>
+                              <input type="checkbox" checked={isUnknown}
+                                onChange={e => setPerItemDates(p => ({ ...p, [i]: { ...p[i], dateUnknown: e.target.checked } }))}
+                                style={{ accentColor: "#C8102E", width: 12, height: 12 }} />
+                              UNKNOWN
+                            </label>
+                            {!isUnknown && (
+                              <input type="date" value={dateVal || ""}
+                                onChange={e => setPerItemDates(p => ({ ...p, [i]: { ...p[i], date: e.target.value, dateUnknown: false } }))}
+                                style={{ flex: 1, minWidth: 120, padding: "3px 7px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 5, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }}
+                              />
+                            )}
+                            {!isUnknown && dateVal && (
+                              <button
+                                onClick={() => {
+                                  setSharedDate(dateVal);
+                                  setQueue(q => q.map(it => it.done ? it : { ...it, date: dateVal, dateUnknown: false }));
+                                  setPerItemDates({});
+                                }}
+                                title="Apply this date to all cans"
+                                style={{ background: "none", border: "none", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.08em", flexShrink: 0, padding: 0 }}>
+                                APPLY TO ALL
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {item.err && <p style={{ color: "#FF4444", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginTop: 4 }}>❌ {item.err}</p>}
                   </div>
 
@@ -1199,19 +1251,39 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
   const [tagInput, setTagInput] = useState("");
   const [applyTags, setApplyTags] = useState([]);
   const [removeTags, setRemoveTags] = useState([]);
+  const [applyCountries, setApplyCountries] = useState([]);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [filterTags, setFilterTags] = useState([]); // tags used to filter visible cans
 
   const allTags = [...new Set(cans.flatMap(c => c.tags))].sort();
 
+  // Cans visible in the selector (filtered by filterTags)
+  const visibleCans = filterTags.length > 0
+    ? cans.filter(c => filterTags.every(ft => c.tags.includes(ft)))
+    : cans;
+
   const toggleCan = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleAll = () => setSelected(s => s.size === cans.length ? new Set() : new Set(cans.map(c => c.id)));
+  const toggleAll = () => {
+    const visibleIds = visibleCans.map(c => c.id);
+    const allVisibleSelected = visibleIds.every(id => selected.has(id));
+    setSelected(s => {
+      const n = new Set(s);
+      if (allVisibleSelected) visibleIds.forEach(id => n.delete(id));
+      else visibleIds.forEach(id => n.add(id));
+      return n;
+    });
+  };
 
   const addApplyTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
     if (t && !applyTags.includes(t)) setApplyTags(p => [...p, t]);
     setTagInput("");
   };
+
+  const toggleFilterTag = (t) => setFilterTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+
+  const hasChanges = applyTags.length > 0 || removeTags.length > 0 || applyCountries.length > 0;
 
   const handleSave = async () => {
     if (selected.size === 0) return;
@@ -1221,16 +1293,20 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
       let tags = [...c.tags];
       applyTags.forEach(t => { if (!tags.includes(t)) tags.push(t); });
       removeTags.forEach(t => { tags = tags.filter(x => x !== t); });
-      return { ...c, tags };
+      let countries = [...(c.countries || [])];
+      applyCountries.forEach(cn => { if (!countries.includes(cn)) countries.push(cn); });
+      return { ...c, tags, countries };
     });
     await onSave(updated.filter(c => selected.has(c.id)));
     setSaving(false);
     setDone(true);
   };
 
+  const allVisibleSelected = visibleCans.length > 0 && visibleCans.every(c => selected.has(c.id));
+
   return (
     <ModalShell onClose={onClose} T={T}>
-      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Edit Tags</div>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Edit</div>
       <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
 
       {done ? (
@@ -1242,7 +1318,7 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
       ) : (
         <>
           {/* Tags to add */}
-          <div style={{ marginBottom: 12, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
+          <div style={{ marginBottom: 10, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#22C55E", letterSpacing: "0.2em", marginBottom: 6 }}>+ TAGS TO ADD</p>
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <input value={tagInput} onChange={e => setTagInput(e.target.value)}
@@ -1257,7 +1333,7 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
           </div>
 
           {/* Tags to remove */}
-          <div style={{ marginBottom: 12, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
+          <div style={{ marginBottom: 10, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#C8102E", letterSpacing: "0.2em", marginBottom: 6 }}>− TAGS TO REMOVE (tap to mark)</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {allTags.map(t => (
@@ -1272,16 +1348,42 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
             </div>
           </div>
 
+          {/* Countries to add */}
+          <div style={{ marginBottom: 10, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#3B82F6", letterSpacing: "0.2em", marginBottom: 6 }}>🌍 COUNTRIES TO ADD</p>
+            <CountryInput value={applyCountries} onChange={setApplyCountries} T={T} placeholder="Czech Republic, Germany…" />
+          </div>
+
+          {/* Filter by tag to narrow can list */}
+          <div style={{ marginBottom: 8 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 5 }}>🔍 FILTER LIST BY TAG</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {allTags.map(t => (
+                <span key={t} onClick={() => toggleFilterTag(t)}
+                  style={{ padding: "3px 10px", borderRadius: "999px", fontSize: 10, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.06em", cursor: "pointer", userSelect: "none", transition: "all 0.15s",
+                    background: filterTags.includes(t) ? "#3B82F6" : T.bgCard,
+                    color: filterTags.includes(t) ? "#fff" : T.textMuted,
+                    border: `1.5px solid ${filterTags.includes(t) ? "#3B82F6" : T.border}`,
+                  }}>#{t}</span>
+              ))}
+            </div>
+            {filterTags.length > 0 && (
+              <button onClick={() => setFilterTags([])} style={{ marginTop: 5, background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>CLEAR FILTER</button>
+            )}
+          </div>
+
           {/* Can selector */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em" }}>SELECT CANS ({selected.size} selected)</p>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em" }}>
+                SELECT CANS ({selected.size} selected{filterTags.length > 0 ? `, showing ${visibleCans.length}` : ""})
+              </p>
               <button onClick={toggleAll} style={{ background: "none", border: "none", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 9, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>
-                {selected.size === cans.length ? "DESELECT ALL" : "SELECT ALL"}
+                {allVisibleSelected ? "DESELECT VISIBLE" : "SELECT VISIBLE"}
               </button>
             </div>
             <div style={{ maxHeight: "28vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
-              {cans.map(c => (
+              {visibleCans.map(c => (
                 <div key={c.id} onClick={() => toggleCan(c.id)}
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", background: selected.has(c.id) ? "#C8102E0f" : T.bgInput, border: `1.5px solid ${selected.has(c.id) ? "#C8102E66" : T.border}`, borderRadius: 8, cursor: "pointer", transition: "all 0.12s" }}>
                   <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${selected.has(c.id) ? "#C8102E" : T.border}`, background: selected.has(c.id) ? "#C8102E" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, color: "#fff" }}>
@@ -1293,14 +1395,20 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
                     <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 2 }}>{c.tags.slice(0, 4).map(t => <TagPill key={t} tag={t} T={T} />)}</div>
+                    {(c.countries || []).length > 0 && (
+                      <div style={{ fontSize: 10, color: T.textFaint, fontFamily: "Georgia,serif", marginTop: 2 }}>{(c.countries || []).join(", ")}</div>
+                    )}
                   </div>
                 </div>
               ))}
+              {visibleCans.length === 0 && (
+                <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.textFaint, fontStyle: "italic", textAlign: "center", padding: "16px 0" }}>No cans match selected filters</p>
+              )}
             </div>
           </div>
 
-          <button onClick={handleSave} disabled={selected.size === 0 || (applyTags.length === 0 && removeTags.length === 0) || saving}
-            style={{ width: "100%", padding: "13px", background: (selected.size > 0 && (applyTags.length > 0 || removeTags.length > 0)) ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E33" }}>
+          <button onClick={handleSave} disabled={selected.size === 0 || !hasChanges || saving}
+            style={{ width: "100%", padding: "13px", background: (selected.size > 0 && hasChanges) ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E33" }}>
             {saving ? "SAVING…" : `APPLY TO ${selected.size} CAN${selected.size !== 1 ? "S" : ""}`}
           </button>
         </>
@@ -1622,7 +1730,7 @@ function CollectionPage({ T, L, isAdmin }) {
       {/* Modals */}
       {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTags} />}
       {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTags} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
-      {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); }} onClose={() => setModal(null)} />}
+      {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTags} customColors={customColors} onSave={setCustomColors} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
@@ -2754,7 +2862,7 @@ export default function App() {
     collectionTitle: "Sbírka plechovek", wishlistTitle: "Přání", canwallTitle: "Stěna plechovek", statsTitle: "Statistiky",
     collectionSub: "Kolekce plechovek", tagline: "KAŽDÁ PLECHOVKA MÁ PŘÍBĚH",
     signIn: "🔐 Přihlásit", signOut: "Odhlásit",
-    addCan: "+ Přidat", bulk: "📦 Hromadně", bulkTags: "🏷️ Štítky", colors: "🎨 Barvy",
+    addCan: "+ Přidat", bulk: "📦 Hromadně", bulkTags: "🏷️ Hromadně upravit", colors: "🎨 Barvy",
     random: "🎲 Náhodná", filterTag: "FILTROVAT DLE ŠTÍTKU", filterCountry: "🌍 FILTROVAT DLE ZEMĚ",
     clear: "zrušit", clearFilters: "zrušit filtry", cansInVault: (n) => `${n} PLECHOVEK VE SBÍRCE`,
     showingOf: (n, t) => `ZOBRAZENO ${n} Z ${t}`,
@@ -2788,7 +2896,7 @@ export default function App() {
     collectionTitle: "The Collection", wishlistTitle: "Wishlist", canwallTitle: "Can Wall", statsTitle: "Stats",
     collectionSub: "SODA CAN COLLECTION", tagline: "★ EVERY CAN TELLS A STORY ★",
     signIn: "🔐 Sign in", signOut: "Sign out",
-    addCan: "+ Add Can", bulk: "📦 Bulk", bulkTags: "🏷️ Tags", colors: "🎨 Colors",
+    addCan: "+ Add Can", bulk: "📦 Bulk", bulkTags: "🏷️ Bulk Edit", colors: "🎨 Colors",
     random: "🎲 Random", filterTag: "FILTER BY TAG", filterCountry: "🌍 FILTER BY COUNTRY",
     clear: "clear", clearFilters: "clear filters", cansInVault: (n) => `${n} CANS IN VAULT`,
     showingOf: (n, t) => `SHOWING ${n} OF ${t}`,
