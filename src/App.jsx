@@ -935,6 +935,10 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
   const [queue, setQueue] = useState([]);
   const [tagInput, setTagInput] = useState("");
   const [sharedTags, setSharedTags] = useState([]);
+  const [sharedCountries, setSharedCountries] = useState([]);
+  const [sharedDateUnknown, setSharedDateUnknown] = useState(false);
+  const [sharedDate, setSharedDate] = useState("");
+  const [countryInput, setCountryInput] = useState("");
   const [cropIdx, setCropIdx] = useState(null); // index of item being cropped
   const [perTagInput, setPerTagInput] = useState({}); // {idx: inputValue}
   const fileRef = useRef();
@@ -947,6 +951,9 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
       croppedUrl: null,
       name: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
       tags: [...sharedTags],
+      countries: [...sharedCountries],
+      dateUnknown: sharedDateUnknown,
+      date: sharedDate,
       uploading: false, done: false, url: null, err: null,
     }));
     setQueue(items);
@@ -992,7 +999,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
         if (!res.ok) throw new Error(`${res.status}`);
         const { url } = await res.json();
         updateItem(i, { uploading: false, done: true, url });
-        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, image: url, addedAt: Date.now() });
+        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: item.dateUnknown || false, image: url, addedAt: item.dateUnknown ? Date.now() : (item.date ? new Date(item.date).getTime() || Date.now() : Date.now()) });
       } catch (err) {
         updateItem(i, { uploading: false, err: err.message });
       }
@@ -1011,6 +1018,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
         T={T}
         quality={0.92}
         targetKB={150}
+        originalFile={queue[cropIdx].croppedFile || queue[cropIdx].file}
         onCrop={f => handleCropped(cropIdx, f)}
         onCancel={() => setCropIdx(null)}
       />
@@ -1022,9 +1030,12 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
       <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Upload</div>
       <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
 
-      {/* Shared tags — always visible */}
+      {/* Shared controls — tags, country, date */}
       <div style={{ marginBottom: 12, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
-        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 6 }}>SHARED TAGS — added to every can</p>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 6 }}>SHARED — applied to every can</p>
+
+        {/* Tags */}
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 4 }}>TAGS</p>
         <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
           <input value={tagInput} onChange={e => setTagInput(e.target.value)}
             onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addSharedTag())}
@@ -1032,8 +1043,41 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
             style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
           <button onClick={addSharedTag} style={{ background: "#C8102E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minHeight: 20 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minHeight: 16, marginBottom: 10 }}>
           {sharedTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setSharedTags(p => p.filter(x => x !== t))} />)}
+        </div>
+
+        {/* Country */}
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 4 }}>COUNTRY</p>
+        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+          <input value={countryInput} onChange={e => setCountryInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const v = countryInput.trim(); if (v && !sharedCountries.includes(v)) { setSharedCountries(p => [...p, v]); setQueue(q => q.map(item => item.done ? item : { ...item, countries: item.countries.includes(v) ? item.countries : [...item.countries, v] })); } setCountryInput(""); } }}
+            placeholder="Czech Republic, Germany…"
+            style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+          <button onClick={() => { const v = countryInput.trim(); if (v && !sharedCountries.includes(v)) { setSharedCountries(p => [...p, v]); setQueue(q => q.map(item => item.done ? item : { ...item, countries: item.countries.includes(v) ? item.countries : [...item.countries, v] })); } setCountryInput(""); }}
+            style={{ background: "#C8102E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minHeight: 16, marginBottom: 10 }}>
+          {sharedCountries.map(c => (
+            <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", fontSize: 11, color: T.text, fontFamily: "Georgia,serif" }}>
+              {c}
+              <span onClick={() => { setSharedCountries(p => p.filter(x => x !== c)); setQueue(q => q.map(item => ({ ...item, countries: item.countries.filter(x => x !== c) }))); }} style={{ cursor: "pointer", color: T.textMuted, marginLeft: 2, fontSize: 13, lineHeight: 1 }}>×</span>
+            </span>
+          ))}
+        </div>
+
+        {/* Date */}
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 4 }}>DATE ADDED</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.text, letterSpacing: "0.08em" }}>
+            <input type="checkbox" checked={sharedDateUnknown} onChange={e => { setSharedDateUnknown(e.target.checked); setQueue(q => q.map(item => item.done ? item : { ...item, dateUnknown: e.target.checked })); }}
+              style={{ accentColor: "#C8102E", width: 14, height: 14 }} />
+            UNKNOWN DATE
+          </label>
+          {!sharedDateUnknown && (
+            <input type="date" value={sharedDate} onChange={e => { setSharedDate(e.target.value); setQueue(q => q.map(item => item.done ? item : { ...item, date: e.target.value })); }}
+              style={{ flex: 1, padding: "6px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+          )}
         </div>
       </div>
 
@@ -1961,13 +2005,14 @@ function CanWallPage({ T, L, isAdmin }) {
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
   const [cropSrc, setCropSrc] = useState(null);
+  const [pendingEditFile, setPendingEditFile] = useState(null);
 
   const handleFile = (f) => {
     if (!f) return;
     const isImage = f.type.startsWith("image/") || f.name?.match(/\.(heic|heif)$/i);
     if (!isImage) return;
-    const url = URL.createObjectURL(f);
-    setCropSrc(url);
+    setPendingEditFile(f);
+    setCropSrc(URL.createObjectURL(f));
   };
 
   const handleCropped = async (croppedFile) => {
@@ -2066,7 +2111,7 @@ function CanWallPage({ T, L, isAdmin }) {
       )}
 
       {/* Crop modal for wall photos — no compression, just crop at max quality */}
-      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.97} targetKB={3900} onCrop={handleCropped} onCancel={() => { setCropSrc(null); URL.revokeObjectURL(cropSrc); }} />}
+      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.97} targetKB={3900} originalFile={pendingEditFile} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingEditFile(null); URL.revokeObjectURL(cropSrc); }} />}
 
       {/* Add photo modal */}
       {addModal && (
