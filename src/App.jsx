@@ -395,7 +395,7 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
 
   return (
     <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 300, background: "#000000ee", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 12 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: T.bgCard, border: `3px solid ${T.border}`, borderRadius: 16, padding: 14, width: "100%", maxWidth: 600, maxHeight: "95vh", display: "flex", flexDirection: "column", gap: 10, animation: "popIn 0.2s ease" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: T.bgCard, border: `3px solid ${T.border}`, borderRadius: 16, padding: 14, width: "100%", maxWidth: "min(900px, 96vw)", maxHeight: "95vh", display: "flex", flexDirection: "column", gap: 10, animation: "popIn 0.2s ease" }}>
 
         {/* Header with live size */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -556,7 +556,7 @@ function ModalShell({ onClose, children, T }) {
       <div onClick={e => e.stopPropagation()} style={{
         background: T.bgCard, backgroundImage: T.stripe,
         border: `3px solid ${T.border}`, borderRadius: 20,
-        padding: "36px 28px", width: "100%", maxWidth: 440,
+        padding: "36px 28px", width: "100%", maxWidth: "min(780px, 95vw)",
         maxHeight: "90vh", overflowY: "auto", position: "relative",
         boxShadow: "0 24px 64px #00000077",
         animation: "popIn 0.28s cubic-bezier(.34,1.56,.64,1)",
@@ -1108,7 +1108,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
                     <img
                       src={item.croppedUrl || item.previewUrl}
                       alt=""
-                      style={{ width: 52, height: 72, objectFit: "cover", borderRadius: 7, display: "block", border: item.croppedUrl ? "2px solid #C8102E" : `1px solid ${T.border}` }}
+                      style={{ width: 80, height: 110, objectFit: "cover", borderRadius: 7, display: "block", border: item.croppedUrl ? "2px solid #C8102E" : `1px solid ${T.border}` }}
                     />
                     {!item.done && !item.uploading && (
                       <button
