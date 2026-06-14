@@ -931,14 +931,14 @@ async function deleteFromBlob(url) {
 
 // ─── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
 
-function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
+function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = [] }) {
   const [queue, setQueue] = useState([]);
   const [tagInput, setTagInput] = useState("");
+  const [tagSuggestions, setTagSuggestions] = useState([]);
   const [sharedTags, setSharedTags] = useState([]);
   const [sharedCountries, setSharedCountries] = useState([]);
   const [sharedDateUnknown, setSharedDateUnknown] = useState(false);
   const [sharedDate, setSharedDate] = useState("");
-  const [countryInput, setCountryInput] = useState("");
   const [cropIdx, setCropIdx] = useState(null); // index of item being cropped
   const [perTagInput, setPerTagInput] = useState({}); // {idx: inputValue}
   const fileRef = useRef();
@@ -959,13 +959,19 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
     setQueue(items);
   };
 
-  const addSharedTag = () => {
-    const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+  const getTagSuggestions = (q) => {
+    if (!q.trim()) return setTagSuggestions([]);
+    const low = q.toLowerCase();
+    setTagSuggestions(allTags.filter(t => t.includes(low) && !sharedTags.includes(t)).slice(0, 6));
+  };
+
+  const addSharedTag = (val) => {
+    const t = (val || tagInput).trim().toLowerCase().replace(/\s+/g, "-");
     if (!t) return;
     if (!sharedTags.includes(t)) setSharedTags(p => [...p, t]);
     // also add to all items not yet uploaded
     setQueue(q => q.map(item => item.done ? item : { ...item, tags: item.tags.includes(t) ? item.tags : [...item.tags, t] }));
-    setTagInput("");
+    setTagInput(""); setTagSuggestions([]);
   };
 
   const addItemTag = (i) => {
@@ -1036,12 +1042,28 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
 
         {/* Tags */}
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 4 }}>TAGS</p>
-        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-          <input value={tagInput} onChange={e => setTagInput(e.target.value)}
-            onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addSharedTag())}
-            placeholder="330ml, limited…"
-            style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
-          <button onClick={addSharedTag} style={{ background: "#C8102E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+        <div style={{ position: "relative", marginBottom: 6 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={tagInput}
+              onChange={e => { setTagInput(e.target.value); getTagSuggestions(e.target.value); }}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addSharedTag(); } if (e.key === "Escape") setTagSuggestions([]); if (e.key === "ArrowDown" && tagSuggestions.length > 0) { e.preventDefault(); addSharedTag(tagSuggestions[0]); } }}
+              onBlur={() => setTimeout(() => setTagSuggestions([]), 150)}
+              placeholder="330ml, limited…"
+              style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+            <button onClick={() => addSharedTag()} style={{ background: "#C8102E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+          </div>
+          {tagSuggestions.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 46, background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 8, zIndex: 50, overflow: "hidden", boxShadow: "0 8px 24px #00000044" }}>
+              {tagSuggestions.map(t => (
+                <div key={t} onMouseDown={() => addSharedTag(t)}
+                  style={{ padding: "7px 12px", cursor: "pointer", fontFamily: "Georgia,serif", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}` }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#C8102E22"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  #{t}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minHeight: 16, marginBottom: 10 }}>
           {sharedTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setSharedTags(p => p.filter(x => x !== t))} />)}
@@ -1049,22 +1071,18 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
 
         {/* Country */}
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 4 }}>COUNTRY</p>
-        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-          <input value={countryInput} onChange={e => setCountryInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const v = countryInput.trim(); if (v && !sharedCountries.includes(v)) { setSharedCountries(p => [...p, v]); setQueue(q => q.map(item => item.done ? item : { ...item, countries: item.countries.includes(v) ? item.countries : [...item.countries, v] })); } setCountryInput(""); } }}
-            placeholder="Czech Republic, Germany…"
-            style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
-          <button onClick={() => { const v = countryInput.trim(); if (v && !sharedCountries.includes(v)) { setSharedCountries(p => [...p, v]); setQueue(q => q.map(item => item.done ? item : { ...item, countries: item.countries.includes(v) ? item.countries : [...item.countries, v] })); } setCountryInput(""); }}
-            style={{ background: "#C8102E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minHeight: 16, marginBottom: 10 }}>
-          {sharedCountries.map(c => (
-            <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", fontSize: 11, color: T.text, fontFamily: "Georgia,serif" }}>
-              {c}
-              <span onClick={() => { setSharedCountries(p => p.filter(x => x !== c)); setQueue(q => q.map(item => ({ ...item, countries: item.countries.filter(x => x !== c) }))); }} style={{ cursor: "pointer", color: T.textMuted, marginLeft: 2, fontSize: 13, lineHeight: 1 }}>×</span>
-            </span>
-          ))}
-        </div>
+        <CountryInput
+          value={sharedCountries}
+          onChange={next => {
+            const added = next.find(c => !sharedCountries.includes(c));
+            const removed = sharedCountries.find(c => !next.includes(c));
+            setSharedCountries(next);
+            if (added) setQueue(q => q.map(item => item.done ? item : { ...item, countries: item.countries.includes(added) ? item.countries : [...item.countries, added] }));
+            if (removed) setQueue(q => q.map(item => ({ ...item, countries: item.countries.filter(c => c !== removed) })));
+          }}
+          T={T}
+          placeholder="Czech Republic, Germany…"
+        />
 
         {/* Date */}
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 4 }}>DATE ADDED</p>
@@ -1603,7 +1621,7 @@ function CollectionPage({ T, L, isAdmin }) {
 
       {/* Modals */}
       {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTags} />}
-      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
+      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTags} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTags} customColors={customColors} onSave={setCustomColors} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
