@@ -1099,7 +1099,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
           </div>
 
           {/* Queue */}
-          <div style={{ maxHeight: "48vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+          <div style={{ maxHeight: "52vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
             {queue.map((item, i) => (
               <div key={i} style={{ background: item.done ? "#22C55E0a" : T.bgInput, border: `1.5px solid ${item.done ? "#22C55E44" : item.err ? "#FF444466" : T.border}`, borderRadius: 10, padding: 10 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -1108,7 +1108,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
                     <img
                       src={item.croppedUrl || item.previewUrl}
                       alt=""
-                      style={{ width: 80, height: 110, objectFit: "cover", borderRadius: 7, display: "block", border: item.croppedUrl ? "2px solid #C8102E" : `1px solid ${T.border}` }}
+                      style={{ width: 120, height: 165, objectFit: "cover", borderRadius: 7, display: "block", border: item.croppedUrl ? "2px solid #C8102E" : `1px solid ${T.border}` }}
                     />
                     {!item.done && !item.uploading && (
                       <button
@@ -1125,7 +1125,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection" }) {
                       value={item.name}
                       onChange={e => updateItem(i, { name: e.target.value })}
                       disabled={item.done || item.uploading}
-                      style={{ width: "100%", padding: "6px 9px", marginBottom: 6, background: item.done ? "transparent" : T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }}
+                      style={{ width: "100%", maxWidth: 200, padding: "6px 9px", marginBottom: 6, background: item.done ? "transparent" : T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }}
                     />
                     {/* Per-item tags */}
                     {!item.done && (
