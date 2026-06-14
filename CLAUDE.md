@@ -248,3 +248,20 @@ UPDATE wishlist SET countries = ARRAY[country] WHERE country IS NOT NULL AND cou
 ## Auto-crop transparent PNGs (June 2026)
 
 When the crop modal loads a PNG with transparency, it scans pixel alpha values via an offscreen canvas and automatically sets the crop box to the tightest bounding box of non-transparent pixels (alpha >= 10), with 2px padding. Falls back to full image if no transparency is detected or if canvas throws (cross-origin etc). Logic is in the img onLoad handler inside CropModal.
+
+## Bulk Upload — Country + Date fields (June 2026)
+
+Added shared country and date controls to BulkUploadModal:
+- SHARED section now has: Tags, Country (multi, type + Enter/+), Date (date picker or "Unknown Date" checkbox)
+- Queue items initialised with countries/dateUnknown/date from shared state
+- onSave passes countries, dateUnknown, addedAt correctly to saveCan
+- Changing shared controls after files are picked propagates to all non-done items
+
+## Transparent PNG auto-crop — all modals (June 2026)
+
+originalFile prop now passed to CropModal from all call sites:
+- AddModal: pendingFile
+- FoundItModal: pendingFoundFile
+- EditModal/WallPhoto: pendingEditFile
+- BulkUpload: queue[cropIdx].file
+CropModal uses originalFile (if PNG) to scan raw alpha before JPEG conversion.
