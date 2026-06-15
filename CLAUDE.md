@@ -349,3 +349,24 @@ Previously: Search → Tags → Sort → Countries → Stats+Buttons → Grid
 - GridCard border: `#e8e0d8` (subtle warm grey, not the bold cream border)
 - GridCard box-shadow: `0 2px 8px #0000000a` (very subtle, no glow)
 - GridCard image area background: `#f8f6f3` (off-white, distinct from page white)
+
+
+## Session: June 2026 — Layout Polish & Dashed Line Removal
+
+### Removed dashed separator lines
+- Collection page toolbar row: `borderBottom: 2px dashed` removed
+- Wishlist page stats/add row: `borderBottom: 2px dashed` removed
+- These were ugly visual dividers with no semantic value
+
+### Wishlist page reordered to match collection
+New order: **Toolbar (+ Add Wish · count · clear)** → **Tag filter** → **Country filter** → **Sort + View**
+Previously: SortBar first, then countries, then tags, then count/add with dashed line
+
+### Wishlist country filter: flag images added
+`FlagImg` component now used in wishlist country buttons (was missing, only collection had it)
+
+### Card style consistency
+- `WishGridCard`: `background #ffffff`, `border 2px solid #e8e0d8`, `boxShadow 0 2px 8px #0000000a`
+- `WishTileCard`: `background #ffffff`, `border 1.5px solid #e8e0d8`, `boxShadow 0 2px 8px #0000000a`
+- Both cards use warm hover: border → `#C8102E`, shadow → `0 10px 26px #C8102E22`
+- Wishlist grid: `repeat(3, 1fr)` — 3 columns, matches collection grid
