@@ -324,3 +324,28 @@ applyCountries: string[]
 filterTags: string[]
 visibleCans: Can[]         // derived from filterTags
 ```
+
+
+## Session: June 2026 — Collection Page Layout & Card Polish
+
+### Layout reorder (CollectionPage)
+New order: Search → **Toolbar (tools + count)** → Tag filter → Country filter → Sort+View → Grid
+
+Previously: Search → Tags → Sort → Countries → Stats+Buttons → Grid
+
+### Toolbar
+- Random, Bulk, Bulk Edit, Colors, + Add Can all appear first in a flex row
+- Can count / "showing X of Y" moved to the right via `marginLeft: "auto"`
+- Clear filters link appears inline next to count when filters are active
+
+### Tag sort toggle
+- New `tagSortMode` state (`"alpha"` | `"count"`) in CollectionPage
+- Small toggle button `[A→Z]` / `[#]` in the tag filter header — toggles between alphabetical and most-used-first
+- `allTags` derived array respects sort mode
+
+### Grid card changes
+- Grid uses `repeat(3, 1fr)` — always 3 columns on any screen width
+- GridCard background: `#ffffff` (pure white, no cream)
+- GridCard border: `#e8e0d8` (subtle warm grey, not the bold cream border)
+- GridCard box-shadow: `0 2px 8px #0000000a` (very subtle, no glow)
+- GridCard image area background: `#f8f6f3` (off-white, distinct from page white)
