@@ -289,3 +289,38 @@ CropModal uses originalFile (if PNG) to scan raw alpha before JPEG conversion.
 ```jsx
 <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { ... }} onClose={() => setModal(null)} />
 ```
+
+
+## Session: June 2026 — UI Polish + Bulk Features
+
+### UI Changes (applied to App.jsx)
+- **Dark mode removed**: `dark` state and `setDark` deleted. `T` object is now always light (`isDark: false`, bg `#ffffff`).
+- **White background**: `T.bg` is `#ffffff` (was warm cream `#FFF5E6`).
+- **No glow**: `textShadow` removed from h1 title and header logo.
+- **No email**: `tondatonc@gmail.com` footer link removed.
+- **Logo → Home button**: The `🥤 CanVault` header logo is now a `<button onClick={() => navigate("/")} ...>` that navigates to the main collection page.
+- **Bigger can cards**: Collection and wishlist grids use `minmax(190px,1fr)` (was 155px).
+- **Admin-only export/quirk tools**: `StatsPage` now accepts `isAdmin` prop. Export JSON, MigrateBlobTool, OrphanCleanupTool are wrapped in `{isAdmin && ...}`.
+
+### Bulk Upload Improvements
+- **Auto-crop**: On `handleFiles`, all item indices are pushed to `autoCropQueue`. A `useEffect` watches `[cropIdx, autoCropQueue]` and auto-opens the crop modal for the next item after each crop is confirmed.
+- **Per-item date editors**: Each queue item has inline date/unknown controls stored in `perItemDates` state `{idx: {date, dateUnknown}}`. "APPLY TO ALL" button copies a date to `sharedDate` and all non-done items. Upload uses per-item date with fallback to item/shared date.
+
+### Bulk Edit Modal (was "Bulk Tags")
+- Title changed to "Bulk Edit", button label updated.
+- **🌍 Countries to add**: `applyCountries` state + `CountryInput` component. Countries are merged (not replaced) into selected cans on save.
+- **Tag filter for can list**: `filterTags` state. Clicking a tag in "FILTER LIST BY TAG" section narrows the visible can list. "SELECT VISIBLE" / "DESELECT VISIBLE" toggles only filtered cans.
+- `onSave` handler now includes updated `countries` array.
+
+### Key state in BulkUploadModal
+```
+autoCropQueue: number[]    // indices pending auto-crop
+perItemDates: {[idx]: {date?, dateUnknown?}}
+```
+
+### Key state in BulkTagModal
+```
+applyCountries: string[]
+filterTags: string[]
+visibleCans: Can[]         // derived from filterTags
+```
