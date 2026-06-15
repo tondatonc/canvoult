@@ -1659,7 +1659,7 @@ function CollectionPage({ T, L, isAdmin }) {
       </div>
 
       {/* ── Action toolbar: tools first, then count ── */}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 14, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         {cans.length > 0 && (
           <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.random}</button>
         )}
@@ -1881,11 +1881,20 @@ function WishlistPage({ T, L, isAdmin }) {
       </div>
 
       {loading ? <LoadingSpinner T={T} /> : <>
-      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
+      {/* ── Tag filter ── */}
+      {allTags.length > 0 && (
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
+          </div>
+        </div>
+      )}
 
-      {/* Country filter */}
+      {/* ── Country filter ── */}
       {allCountries.length > 0 && (
-        <div style={{ marginBottom: 10, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
@@ -1901,6 +1910,7 @@ function WishlistPage({ T, L, isAdmin }) {
                   cursor: "pointer", transition: "all 0.15s",
                   display: "flex", alignItems: "center", gap: 6,
                 }}>
+                  {(() => { const rc = resolveCountry(country); return rc?.iso2 ? <FlagImg iso2={rc.iso2} name={rc.name} /> : null; })()}
                   {country}
                   <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
                 </button>
@@ -1910,28 +1920,17 @@ function WishlistPage({ T, L, isAdmin }) {
         </div>
       )}
 
-      {/* Tag filter */}
-      {allTags.length > 0 && (
-        <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-          </div>
-        </div>
-      )}
+      {/* ── Sort + view ── */}
+      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
-            {sorted.length === wishes.length ? L.wishCount(wishes.length) : L.showingOf(sorted.length, wishes.length)}
-          </span>
-          {activeFilters > 0 && (
-            <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>
-              {L.clearFilters}
-            </button>
-          )}
-        </div>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         {isAdmin && <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addWish}</button>}
+        <span style={{ marginLeft: "auto", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
+          {sorted.length === wishes.length ? L.wishCount(wishes.length) : L.showingOf(sorted.length, wishes.length)}
+        </span>
+        {activeFilters > 0 && (
+          <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>{L.clearFilters}</button>
+        )}
       </div>
 
       {sorted.length === 0 ? (
@@ -1943,7 +1942,7 @@ function WishlistPage({ T, L, isAdmin }) {
           {isAdmin && activeFilters === 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>{L.noWishesHint}</p>}
         </div>
       ) : viewMode === "grid" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} />)}
         </div>
       ) : (
@@ -1980,9 +1979,9 @@ function WishlistPage({ T, L, isAdmin }) {
 function WishGridCard({ wish, i, T, onClick }) {
   const color = getCanColor(wish.tags);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px dashed ${T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
+    <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid #e8e0d8`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #C8102E22"; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = ""; }}>
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = "#e8e0d8"; e.currentTarget.style.boxShadow = "0 2px 8px #0000000a"; }}>
       <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
         <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
@@ -2000,7 +1999,7 @@ function WishGridCard({ wish, i, T, onClick }) {
 function WishTileCard({ wish, i, T, onClick }) {
   const color = getCanColor(wish.tags);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px dashed ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s" }}
+    <div onClick={onClick} style={{ background: "#ffffff", border: `1.5px solid #e8e0d8`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, boxShadow: "0 2px 8px #0000000a", transition: "border-color 0.15s,box-shadow 0.15s" }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 4px 18px #C8102E22"; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = ""; }}>
       <div style={{ width: 36, height: 56, flexShrink: 0, opacity: 0.75, filter: "grayscale(30%)" }}>
