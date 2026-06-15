@@ -1718,7 +1718,7 @@ function CollectionPage({ T, L, isAdmin }) {
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>{L.noCansFound}</p>
         </div>
       ) : viewMode === "grid" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(155px,1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 16 }}>
           {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
@@ -1754,10 +1754,10 @@ function CollectionPage({ T, L, isAdmin }) {
 function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
   const color = getCanColor(can.tags, customColors);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${pinned ? "#C8102E88" : T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010,0 1px 0 #fff inset", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
+    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${pinned ? "#C8102E88" : T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 3px 12px #00000010,0 1px 0 #fff inset", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 12px 30px ${color}33`; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010,0 1px 0 #fff inset"; }}>
-      <div style={{ width: "100%", aspectRatio: "3/4", background: T.isDark ? "#060d18" : "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010,0 1px 0 #fff inset"; }}>
+      <div style={{ width: "100%", aspectRatio: "3/4", background: "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
         {onPin && (
           <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000044", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
@@ -1778,9 +1778,9 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
 function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
   const color = getCanColor(can.tags, customColors);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s", boxShadow: T.isDark ? "0 2px 12px #00000044" : "0 2px 8px #00000010" }}
+    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s", boxShadow: "0 2px 8px #00000010" }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 18px ${color}28`; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = T.isDark ? "0 2px 12px #00000044" : "0 2px 8px #00000010"; }}>
+      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "0 2px 8px #00000010"; }}>
       <div style={{ width: 36, height: 56, flexShrink: 0 }}>
         {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
       </div>
@@ -1935,7 +1935,7 @@ function WishlistPage({ T, L, isAdmin }) {
           {isAdmin && activeFilters === 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>{L.noWishesHint}</p>}
         </div>
       ) : viewMode === "grid" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(155px,1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 16 }}>
           {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} />)}
         </div>
       ) : (
@@ -1975,7 +1975,7 @@ function WishGridCard({ wish, i, T, onClick }) {
     <div onClick={onClick} style={{ background: T.bgCard, border: `2px dashed ${T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #C8102E22"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = ""; }}>
-      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: T.isDark ? "#1a0808" : "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
         <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
         <div style={{ width: "55%", height: "80%", opacity: 0.8, filter: "grayscale(20%)", position: "relative" }}>
@@ -2214,9 +2214,9 @@ function CanWallPage({ T, L, isAdmin }) {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16 }}>
           {photos.map((photo, i) => (
-            <div key={photo.id} onClick={() => setViewPhoto(photo)} style={{ borderRadius: 12, overflow: "hidden", border: `2px solid ${T.border}`, cursor: "pointer", animation: `popIn 0.3s ease ${i * 0.06}s both`, transition: "transform 0.2s,box-shadow 0.2s,border-color 0.15s", background: T.bgCard, boxShadow: T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010" }}
+            <div key={photo.id} onClick={() => setViewPhoto(photo)} style={{ borderRadius: 12, overflow: "hidden", border: `2px solid ${T.border}`, cursor: "pointer", animation: `popIn 0.3s ease ${i * 0.06}s both`, transition: "transform 0.2s,box-shadow 0.2s,border-color 0.15s", background: T.bgCard, boxShadow: "0 3px 12px #00000010" }}
               onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.02)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 8px 28px #C8102E22"; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = T.isDark ? "0 4px 20px #00000055" : "0 3px 12px #00000010"; }}>
+              onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010"; }}>
               <div style={{ width: "100%", height: 200, overflow: "hidden" }}>
                 <img src={photo.image} alt={photo.caption || "Can wall"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
@@ -2480,7 +2480,7 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
 
 // ─── STATS PAGE ───────────────────────────────────────────────────────────────
 
-function StatsPage({ T, L }) {
+function StatsPage({ T, L, isAdmin }) {
   const [cans, setCans] = useState([]);
   const [wishes, setWishes] = useState([]);
   const [wallPhotos, setWallPhotos] = useState([]);
@@ -2643,8 +2643,8 @@ function StatsPage({ T, L }) {
         );
       })()}
 
-      {/* Export */}
-      <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+      {/* Export — admin only */}
+      {isAdmin && <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
         <button onClick={exportJSON} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "12px 28px", color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 13, letterSpacing: "0.15em", cursor: "pointer" }}>
           {L.exportBtn}
         </button>
@@ -2657,7 +2657,7 @@ function StatsPage({ T, L }) {
             if (uw) setWishes(p => p.map(w => uw[w.id] ? { ...w, image: uw[w.id] } : w));
           }} />
         <OrphanCleanupTool T={T} cans={cans} wishes={wishes} />
-      </div>
+      </div>}
     </div>
   );
 }
@@ -2833,7 +2833,6 @@ function OrphanCleanupTool({ T, cans, wishes }) {
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [dark, setDark] = useState(false);
   const [cz, setCz] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("cv_admin") === "1");
   const [showLogin, setShowLogin] = useState(false);
@@ -2842,18 +2841,16 @@ export default function App() {
   const location = useLocation();
 
   const T = {
-    isDark: dark,
-    bg: dark ? "#060d18" : "#FFF5E6",
-    bgCard: dark ? "#0a1525" : "#FFFBF5",
-    bgInput: dark ? "#0d1c30" : "#fff",
-    border: dark ? "#1a3050" : "#E8C4A0",
-    text: dark ? "#C8DEFA" : "#2A0A0A",
-    textMuted: dark ? "#5A7FA8" : "#8B4040",
-    textFaint: dark ? "#2A4A6A" : "#C8A080",
+    isDark: false,
+    bg: "#ffffff",
+    bgCard: "#FFFBF5",
+    bgInput: "#fff",
+    border: "#E8C4A0",
+    text: "#2A0A0A",
+    textMuted: "#8B4040",
+    textFaint: "#C8A080",
     accent: "#C8102E",
-    stripe: dark
-      ? "repeating-linear-gradient(180deg,#060d18 0px,#060d18 24px,#081222 24px,#081222 48px)"
-      : "repeating-linear-gradient(180deg,#FFF5E6 0px,#FFF5E6 24px,#FFF0DC 24px,#FFF0DC 48px)",
+    stripe: "repeating-linear-gradient(180deg,#ffffff 0px,#ffffff 24px,#FFF5E6 24px,#FFF5E6 48px)",
   };
 
   // All UI strings — switch between EN and CZ
@@ -2969,22 +2966,18 @@ export default function App() {
         </div>
 
         <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => navigate("/")} style={{ display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
             <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", fontSize: 20 }}>🥤</div>
             <div>
-              <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#FFF5E6", lineHeight: 1, textShadow: "2px 2px 0 #7a0000" }}>CanVault</div>
+              <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#FFF5E6", lineHeight: 1 }}>CanVault</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: "#FFD0C0", letterSpacing: "0.2em" }}>{L.collectionSub}</div>
             </div>
-          </div>
+          </button>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* Czech mode toggle */}
             <button onClick={() => setCz(c => !c)} style={{ background: cz ? "#FFF5E6" : "#8a0000", border: `2px solid ${cz ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "5px 10px", color: cz ? "#C8102E" : "#FFF5E6", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: "0.05em", lineHeight: 1 }}>
               🇨🇿
-            </button>
-            {/* Dark mode toggle */}
-            <button onClick={() => setDark(d => !d)} style={{ background: dark ? "#FFF5E6" : "#8a0000", border: `2px solid ${dark ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "7px 11px", color: dark ? "#C8102E" : "#FFF5E6", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>
-              {dark ? "☀️" : "🌙"}
             </button>
             <button onClick={() => setMenuOpen(m => !m)} style={{ background: menuOpen ? "#FFF5E6" : "#8a0000", border: `2px solid ${menuOpen ? "#FFE8D0" : "#5a0000"}`, borderRadius: 10, padding: "7px 12px", color: menuOpen ? "#C8102E" : "#FFF5E6", cursor: "pointer", fontSize: 18, lineHeight: 1, fontWeight: 700 }}>
               {menuOpen ? "✕" : "☰"}
@@ -3021,7 +3014,7 @@ export default function App() {
           </>}
         </div>
         <div style={{ maxWidth: 1100, margin: "4px auto 0" }}>
-          <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(22px,4vw,38px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: dark ? "none" : "2px 2px 0 #FFD0C0", lineHeight: 1.1 }}>
+          <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(22px,4vw,38px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: "none", lineHeight: 1.1 }}>
             {currentNav?.icon} {currentNav?.title}
           </h1>
         </div>
@@ -3033,7 +3026,7 @@ export default function App() {
           <Route path="/" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
           <Route path="/wishlist" element={<WishlistPage T={T} L={L} isAdmin={isAdmin} />} />
           <Route path="/canwall" element={<CanWallPage T={T} L={L} isAdmin={isAdmin} />} />
-          <Route path="/stats" element={<StatsPage T={T} L={L} />} />
+          <Route path="/stats" element={<StatsPage T={T} L={L} isAdmin={isAdmin} />} />
           <Route path="*" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
         </Routes>
       </main>
@@ -3042,7 +3035,6 @@ export default function App() {
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>{L.tagline}</p>
-        <a href="mailto:tondatonc@gmail.com" style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textMuted, marginTop: 10, display: "inline-block", textDecoration: "none", fontStyle: "italic" }}>tondatonc@gmail.com</a>
       </div>
 
       {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
