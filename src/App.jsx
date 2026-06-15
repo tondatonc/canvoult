@@ -1597,7 +1597,11 @@ function CollectionPage({ T, L, isAdmin }) {
   }, []);
 
   const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
-  const allTags = [...new Set(cans.flatMap(c => c.tags))].sort();
+  const [tagSortMode, setTagSortMode] = useState("alpha"); // "alpha" | "count"
+  const allTagsRaw = [...new Set(cans.flatMap(c => c.tags))];
+  const allTags = tagSortMode === "count"
+    ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0))
+    : [...allTagsRaw].sort();
   const allCountries = [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort();
 
   const baseFiltered = cans.filter(can => {
@@ -1654,10 +1658,37 @@ function CollectionPage({ T, L, isAdmin }) {
         {search && <button onClick={() => setSearch("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: 18 }}>×</button>}
       </div>
 
-      {/* Tag filters */}
+      {/* ── Action toolbar: tools first, then count ── */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
+        {cans.length > 0 && (
+          <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.random}</button>
+        )}
+        {isAdmin && (
+          <>
+            <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulk}</button>
+            <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulkTags}</button>
+            <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.colors}</button>
+            <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addCan}</button>
+          </>
+        )}
+        <span style={{ marginLeft: "auto", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
+          {allFiltered.length === cans.length ? L.cansInVault(cans.length) : L.showingOf(allFiltered.length, cans.length)}
+        </span>
+        {(activeTags.length > 0 || activeCountry) && (
+          <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clearFilters}</button>
+        )}
+      </div>
+
+      {/* ── Tag filters ── */}
       {allTags.length > 0 && (
-        <div style={{ marginBottom: 14, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em" }}>{L.filterTag}</p>
+            <button onClick={() => setTagSortMode(m => m === "alpha" ? "count" : "alpha")}
+              style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", letterSpacing: "0.08em" }}>
+              {tagSortMode === "alpha" ? "A→Z" : "#"}
+            </button>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
             {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
@@ -1665,12 +1696,9 @@ function CollectionPage({ T, L, isAdmin }) {
         </div>
       )}
 
-      {/* Sort + view */}
-      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
-
-      {/* Country filter */}
+      {/* ── Country filter ── */}
       {allCountries.length > 0 && (
-        <div style={{ marginBottom: 10, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
@@ -1688,28 +1716,8 @@ function CollectionPage({ T, L, isAdmin }) {
         </div>
       )}
 
-      {/* Stats + Add */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 12, borderBottom: `2px dashed ${T.border}`, flexWrap: "wrap", gap: 8 }}>
-        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em" }}>
-          {allFiltered.length === cans.length ? L.cansInVault(cans.length) : L.showingOf(allFiltered.length, cans.length)}
-        </span>
-        {(activeTags.length > 0 || activeCountry) && (
-          <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clearFilters}</button>
-        )}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {cans.length > 0 && (
-            <button onClick={() => { const r = cans[Math.floor(Math.random() * cans.length)]; setModal({ can: r }); }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.random}</button>
-          )}
-          {isAdmin && (
-            <>
-              <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulk}</button>
-              <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulkTags}</button>
-              <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.colors}</button>
-              <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addCan}</button>
-            </>
-          )}
-        </div>
-      </div>
+      {/* ── Sort + view ── */}
+      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
 
       {/* Grid / Tile */}
       {allFiltered.length === 0 ? (
@@ -1718,7 +1726,7 @@ function CollectionPage({ T, L, isAdmin }) {
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>{L.noCansFound}</p>
         </div>
       ) : viewMode === "grid" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
           {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
@@ -1754,10 +1762,10 @@ function CollectionPage({ T, L, isAdmin }) {
 function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
   const color = getCanColor(can.tags, customColors);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${pinned ? "#C8102E88" : T.border}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 3px 12px #00000010,0 1px 0 #fff inset", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
+    <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 12px 30px ${color}33`; }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010,0 1px 0 #fff inset"; }}>
-      <div style={{ width: "100%", aspectRatio: "3/4", background: "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+      <div style={{ width: "100%", aspectRatio: "3/4", background: "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
         {onPin && (
           <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000044", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
