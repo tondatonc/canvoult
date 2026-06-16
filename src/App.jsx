@@ -554,7 +554,7 @@ function ModalShell({ onClose, children, T }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000000bb", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: T.bgCard, backgroundImage: T.stripe,
+        background: "#ffffff",
         border: `3px solid ${T.border}`, borderRadius: 20,
         padding: "36px 28px", width: "100%", maxWidth: "min(780px, 95vw)",
         maxHeight: "90vh", overflowY: "auto", position: "relative",
@@ -596,6 +596,10 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     { v: "oldest", l: L.sortOldest },
     { v: "az", l: L.sortAZ },
     { v: "za", l: L.sortZA },
+    { v: "brand", l: L.sortBrand },
+    { v: "price_asc", l: L.sortPriceAsc },
+    { v: "price_desc", l: L.sortPriceDesc },
+    { v: "countries", l: L.sortCountries },
   ];
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
@@ -626,12 +630,34 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
   );
 }
 
+function extractBrand(name) {
+  return (name || "").trim().split(/\s+/)[0].toLowerCase();
+}
+function parsePrice(p) {
+  if (!p) return null;
+  const n = parseFloat(String(p).replace(/[^0-9.,]/g, "").replace(",", "."));
+  return isNaN(n) ? null : n;
+}
 function sortCans(cans, sort) {
   return [...cans].sort((a, b) => {
     if (sort === "newest") return b.addedAt - a.addedAt;
     if (sort === "oldest") return a.addedAt - b.addedAt;
     if (sort === "az") return a.name.localeCompare(b.name);
     if (sort === "za") return b.name.localeCompare(a.name);
+    if (sort === "brand") return extractBrand(a.name).localeCompare(extractBrand(b.name));
+    if (sort === "price_asc") {
+      const pa = parsePrice(a.price), pb = parsePrice(b.price);
+      if (pa === null && pb === null) return 0;
+      if (pa === null) return 1; if (pb === null) return -1;
+      return pa - pb;
+    }
+    if (sort === "price_desc") {
+      const pa = parsePrice(a.price), pb = parsePrice(b.price);
+      if (pa === null && pb === null) return 0;
+      if (pa === null) return 1; if (pb === null) return -1;
+      return pb - pa;
+    }
+    if (sort === "countries") return (b.countries || []).length - (a.countries || []).length;
     return 0;
   });
 }
@@ -1553,7 +1579,7 @@ function CollectionPage({ T, L, isAdmin }) {
   const [sort, setSort] = useState(searchParams.get("sort") || "newest");
   const [viewMode, setViewMode] = useState(searchParams.get("view") || "grid");
   const [modal, setModal] = useState(null);
-  const [pinned, setPinned] = useState(() => { try { return JSON.parse(localStorage.getItem("cv_pinned") || "[]"); } catch { return []; } });
+  const [pinned, setPinned] = useState([]);
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
   const [activeCountry, setActiveCountry] = useState(searchParams.get("country") || null);
 
@@ -1572,12 +1598,11 @@ function CollectionPage({ T, L, isAdmin }) {
 
   const skipUrlSync = useRef(false);
 
-  useEffect(() => { localStorage.setItem("cv_pinned", JSON.stringify(pinned)); }, [pinned]);
-
   useEffect(() => {
     if (!db.isConfigured()) { setCans(SAMPLE_CANS); setLoading(false); return; }
-    db.getCans().then(rows => {
+    Promise.all([db.getCans(), db.getPinned()]).then(([rows, pinnedRows]) => {
       const loaded = rows.map(db.rowToCan);
+      setPinned(pinnedRows.filter(r => r.type === "can").map(r => r.can_id));
       setCans(loaded);
       setLoading(false);
       // Deep link: ?can=ID opens that can's detail modal
@@ -1617,7 +1642,14 @@ function CollectionPage({ T, L, isAdmin }) {
   const pinnedCans = baseFiltered.filter(c => pinned.includes(c.id));
   const allFiltered = [...pinnedCans, ...filtered];
 
-  const togglePin = (id) => setPinned(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  const togglePin = async (id) => {
+    const was = pinned.includes(id);
+    setPinned(p => was ? p.filter(x => x !== id) : [...p, id]);
+    if (db.isConfigured()) {
+      try { was ? await db.unpinItem(id, "can") : await db.pinItem(id, "can"); }
+      catch { setPinned(p => was ? [...p, id] : p.filter(x => x !== id)); }
+    }
+  };
 
   const saveCan = async (can, { closeModal = true, refetch = true } = {}) => {
     if (db.isConfigured()) {
@@ -1681,7 +1713,7 @@ function CollectionPage({ T, L, isAdmin }) {
 
       {/* ── Tag filters ── */}
       {allTags.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em" }}>{L.filterTag}</p>
             <button onClick={() => setTagSortMode(m => m === "alpha" ? "count" : "alpha")}
@@ -1698,7 +1730,7 @@ function CollectionPage({ T, L, isAdmin }) {
 
       {/* ── Country filter ── */}
       {allCountries.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
@@ -1832,10 +1864,24 @@ function WishlistPage({ T, L, isAdmin }) {
     navigate(qs ? `/wishlist?${qs}` : "/wishlist", { replace: true });
   }, [activeTags, sort, viewMode, activeCountry]);
 
+  const [pinnedWishes, setPinnedWishes] = useState([]);
+
+  const togglePinWish = async (id) => {
+    const was = pinnedWishes.includes(id);
+    setPinnedWishes(p => was ? p.filter(x => x !== id) : [...p, id]);
+    if (db.isConfigured()) {
+      try { was ? await db.unpinItem(id, "wish") : await db.pinItem(id, "wish"); }
+      catch { setPinnedWishes(p => was ? [...p, id] : p.filter(x => x !== id)); }
+    }
+  };
+
   useEffect(() => {
     if (!db.isConfigured()) { setWishes(SAMPLE_WISHLIST); setLoading(false); return; }
-    db.getWishlist().then(rows => { setWishes(rows.map(db.rowToWish)); setLoading(false); })
-      .catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
+    Promise.all([db.getWishlist(), db.getPinned()]).then(([rows, pinnedRows]) => {
+      setWishes(rows.map(db.rowToWish));
+      setPinnedWishes(pinnedRows.filter(r => r.type === "wish").map(r => r.can_id));
+      setLoading(false);
+    }).catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
   }, []);
 
   const allTags = [...new Set(wishes.flatMap(w => w.tags))].sort();
@@ -1844,11 +1890,15 @@ function WishlistPage({ T, L, isAdmin }) {
   // All unique countries that have been filled in
   const allCountries = [...new Set(wishes.flatMap(w => w.countries || []).filter(Boolean))].sort();
 
-  const sorted = sortCans(wishes.filter(w => {
+  const wishFiltered = wishes.filter(w => {
     const tagMatch = activeTags.length === 0 || activeTags.every(t => w.tags.includes(t));
     const countryMatch = !activeCountry || (w.countries || []).includes(activeCountry);
     return tagMatch && countryMatch;
-  }), sort);
+  });
+  const sorted = [
+    ...wishFiltered.filter(w => pinnedWishes.includes(w.id)),
+    ...sortCans(wishFiltered.filter(w => !pinnedWishes.includes(w.id)), sort),
+  ];
 
   const saveWish = async w => {
     if (db.isConfigured()) {
@@ -1872,7 +1922,7 @@ function WishlistPage({ T, L, isAdmin }) {
 
   return (
     <div>
-      <div style={{ background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 36 }}>⭐</div>
         <div>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: T.text, fontWeight: 700 }}>{L.wishlistTitle}</div>
@@ -1883,7 +1933,7 @@ function WishlistPage({ T, L, isAdmin }) {
       {loading ? <LoadingSpinner T={T} /> : <>
       {/* ── Tag filter ── */}
       {allTags.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
@@ -1894,7 +1944,7 @@ function WishlistPage({ T, L, isAdmin }) {
 
       {/* ── Country filter ── */}
       {allCountries.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 11 }}>
+        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
           <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {allCountries.map(country => {
@@ -1943,11 +1993,11 @@ function WishlistPage({ T, L, isAdmin }) {
         </div>
       ) : viewMode === "grid" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} />)}
+          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} />)}
+          {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       )}
 
@@ -1976,14 +2026,15 @@ function WishlistPage({ T, L, isAdmin }) {
   );
 }
 
-function WishGridCard({ wish, i, T, onClick }) {
+function WishGridCard({ wish, i, T, onClick, pinned = false, onPin = null }) {
   const color = getCanColor(wish.tags);
   return (
-    <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid #e8e0d8`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
+    <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #C8102E22"; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = "#e8e0d8"; e.currentTarget.style.boxShadow = "0 2px 8px #0000000a"; }}>
-      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: "#FFF0DC", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : "#e8e0d8"; e.currentTarget.style.boxShadow = "0 2px 8px #0000000a"; }}>
+      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
+        {onPin && <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000033", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{pinned ? "📌" : "📍"}</button>}
         <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
         <div style={{ width: "55%", height: "80%", opacity: 0.8, filter: "grayscale(20%)", position: "relative" }}>
           {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={wish.name} />}
@@ -1996,12 +2047,13 @@ function WishGridCard({ wish, i, T, onClick }) {
   );
 }
 
-function WishTileCard({ wish, i, T, onClick }) {
+function WishTileCard({ wish, i, T, onClick, pinned = false, onPin = null }) {
   const color = getCanColor(wish.tags);
   return (
-    <div onClick={onClick} style={{ background: "#ffffff", border: `1.5px solid #e8e0d8`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, boxShadow: "0 2px 8px #0000000a", transition: "border-color 0.15s,box-shadow 0.15s" }}
+    <div onClick={onClick} style={{ background: "#ffffff", border: `1.5px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, boxShadow: "0 2px 8px #0000000a", transition: "border-color 0.15s,box-shadow 0.15s" }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 4px 18px #C8102E22"; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = ""; }}>
+      onMouseLeave={e => { e.currentTarget.style.borderColor = pinned ? "#C8102E88" : "#e8e0d8"; e.currentTarget.style.boxShadow = ""; }}>
+      {onPin && <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ flexShrink: 0, background: pinned ? "#C8102E" : "#e8e0d8", border: "none", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", color: pinned ? "#fff" : "#aaa" }}>{pinned ? "📌" : "📍"}</button>}
       <div style={{ width: 36, height: 56, flexShrink: 0, opacity: 0.75, filter: "grayscale(30%)" }}>
         {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={wish.name} />}
       </div>
@@ -2196,7 +2248,7 @@ function CanWallPage({ T, L, isAdmin }) {
 
   return (
     <div>
-      <div style={{ background: T.stripe, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 36 }}>📸</div>
         <div>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: T.text, fontWeight: 700 }}>{L.canwallTitle}</div>
@@ -2208,7 +2260,7 @@ function CanWallPage({ T, L, isAdmin }) {
       </div>
 
       {loading ? <LoadingSpinner T={T} /> : photos.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "50px 20px", border: `2px dashed ${T.border}`, borderRadius: 14, background: T.stripe }}>
+        <div style={{ textAlign: "center", padding: "50px 20px", border: `2px dashed ${T.border}`, borderRadius: 14, background: "#f0ece6" }}>
           <div style={{ fontSize: 52, marginBottom: 12 }}>🗄️</div>
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 20, fontStyle: "italic", marginBottom: 6 }}>{L.noWallPhotos}</p>
           {isAdmin
@@ -2857,7 +2909,7 @@ export default function App() {
     textMuted: "#8B4040",
     textFaint: "#C8A080",
     accent: "#C8102E",
-    stripe: "repeating-linear-gradient(180deg,#ffffff 0px,#ffffff 24px,#FFF5E6 24px,#FFF5E6 48px)",
+    stripe: "#f0ece6",
   };
 
   // All UI strings — switch between EN and CZ
@@ -2890,7 +2942,7 @@ export default function App() {
     loading: "NAČÍTÁNÍ…",
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
-    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A",
+    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
     foundItTitle: "NALEZENO", est: "★ ZAL. 2020 ★", every: "★ KAŽDÁ PLECHOVKA SE POČÍTÁ ★",
@@ -2924,7 +2976,7 @@ export default function App() {
     loading: "LOADING…",
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
-    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A",
+    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
     foundItTitle: "FOUND IT", est: "★ EST. 2020 ★", every: "★ EVERY CAN COUNTS ★",
@@ -3012,7 +3064,7 @@ export default function App() {
       </header>
 
       {/* HERO BAND */}
-      <div style={{ background: T.stripe, borderBottom: `3px solid ${T.border}`, padding: "14px 20px" }}>
+      <div style={{ background: "#f0ece6", borderBottom: `3px solid ${T.border}`, padding: "14px 20px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.15em", cursor: "pointer" }} onClick={() => goTo("/")}>CANVAULT</span>
           {location.pathname !== "/" && <>
