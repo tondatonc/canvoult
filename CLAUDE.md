@@ -370,3 +370,50 @@ Previously: SortBar first, then countries, then tags, then count/add with dashed
 - `WishTileCard`: `background #ffffff`, `border 1.5px solid #e8e0d8`, `boxShadow 0 2px 8px #0000000a`
 - Both cards use warm hover: border → `#C8102E`, shadow → `0 10px 26px #C8102E22`
 - Wishlist grid: `repeat(3, 1fr)` — 3 columns, matches collection grid
+
+
+## Session: June 2026 — Pins→DB, Wishlist Pins, Sort, Stripe Removal
+
+### Supabase: pinned table
+```sql
+CREATE TABLE IF NOT EXISTS pinned (
+  can_id TEXT NOT NULL,
+  type   TEXT NOT NULL DEFAULT 'can',
+  PRIMARY KEY (can_id, type)
+);
+ALTER TABLE pinned ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all" ON pinned FOR ALL USING (true) WITH CHECK (true);
+```
+**IMPORTANT**: This table must exist in Supabase. Run the SQL above in the Supabase dashboard SQL editor if pins aren't working. A one-shot API endpoint `api/init-pinned.mjs` was also added (call `/api/init-pinned` once after deploy).
+
+### db.js changes
+- Added `getPinned()` — returns all rows from `pinned` table
+- Added `pinItem(id, type)` — inserts row, type = 'can' | 'wish'
+- Added `unpinItem(id, type)` — deletes row
+
+### App.jsx: collection pinning
+- `pinned` state now initialised as `[]` (no longer from localStorage)
+- `localStorage cv_pinned` sync effect removed
+- `getCans` useEffect now `Promise.all([getCans(), getPinned()])` — loads both together
+- `togglePin` is now async, calls `db.pinItem`/`db.unpinItem`, reverts on error
+
+### App.jsx: wishlist pinning (new)
+- `pinnedWishes` state + `togglePinWish` async function added to WishlistPage
+- `getWishlist` effect upgraded to `Promise.all([getWishlist(), getPinned()])`
+- `sorted` = pinned wishes first, then rest sorted normally
+- `WishGridCard` / `WishTileCard` accept `pinned` + `onPin` props
+- Pin button (📍/📌) shown in top-left of grid card and inline in tile card
+
+### Sort options extended
+New options added to `sortCans()` and SortBar:
+- `brand` — sorts by first word of name (case-insensitive)
+- `price_asc` / `price_desc` — parses numeric price, nulls last
+- `countries` — most countries first
+Helper functions: `extractBrand(name)`, `parsePrice(price)`
+L string keys added: `sortBrand`, `sortPriceAsc`, `sortPriceDesc`, `sortCountries`
+
+### Stripe removal
+- `T.stripe` value changed from repeating gradient to `"#f0ece6"` (flat warm grey)
+- `ModalShell` background: removed `backgroundImage: T.stripe`, now plain `#ffffff`
+- All `background: T.stripe` references replaced with `background: "#f0ece6"` (8 occurrences)
+- Edit modal / add modal no longer have visible stripe pattern
