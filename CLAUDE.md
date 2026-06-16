@@ -417,3 +417,51 @@ L string keys added: `sortBrand`, `sortPriceAsc`, `sortPriceDesc`, `sortCountrie
 - `ModalShell` background: removed `backgroundImage: T.stripe`, now plain `#ffffff`
 - All `background: T.stripe` references replaced with `background: "#f0ece6"` (8 occurrences)
 - Edit modal / add modal no longer have visible stripe pattern
+
+
+## Session: June 2026 — Pinned→DB, Stripes, Sort, Wishlist Pin
+
+### Critical bug fixed: cans showing as placeholders
+**Root cause**: `getPinned()` threw an error when the `pinned` table didn't exist yet.
+This caused `Promise.all([getCans(), getPinned()])` to reject, falling into the `.catch()` which set `SAMPLE_CANS`.
+**Fix**: Load cans first with `db.getCans().then(...)`, then load pinned separately in a non-fatal `.catch(() => {})` block. Same pattern in WishlistPage.
+
+### pinned table (Supabase)
+Must be created manually in Supabase SQL editor (see `supabase/migration_pinned.sql`):
+```sql
+CREATE TABLE IF NOT EXISTS pinned (
+  can_id text NOT NULL,
+  type   text NOT NULL DEFAULT 'can',
+  PRIMARY KEY (can_id, type)
+);
+ALTER TABLE pinned ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "allow_all" ON pinned FOR ALL USING (true) WITH CHECK (true);
+```
+`type` is either `'can'` or `'wish'` — one table for both.
+db.js exports: `getPinned()`, `pinItem(id, type)`, `unpinItem(id, type)`
+
+### Pinned cans: localStorage → Supabase
+- `pinned` state no longer uses localStorage
+- `togglePin()` calls `db.pinItem` / `db.unpinItem` with optimistic update + revert on error
+- Pins are now cross-device
+
+### Wishlist pinning
+- `pinnedWishes` state in WishlistPage, same DB pattern
+- `togglePinWish()` handler
+- Pinned items float to top of wishlist (sorted separately, prepended)
+- `WishGridCard` and `WishTileCard` accept `pinned` + `onPin` props
+- Pin button (📍/📌) shown for admin users only
+
+### New sort options (both collection + wishlist)
+- Brand (first word of name, alphabetical)
+- Price ↑ / Price ↓ (parsed from price field, items without price go last)
+- Countries (most countries first)
+- `extractBrand(name)` and `parsePrice(p)` helper functions added before `sortCans()`
+- L strings added: `sortBrand`, `sortPriceAsc`, `sortPriceDesc`, `sortCountries`
+
+### Stripes fully removed
+- `T.stripe` definition changed to plain `"#f8f5f0"` solid color
+- ModalShell: `backgroundImage: T.stripe` removed → `background: "#ffffff"`
+- Hero/page band: `background: T.stripe` → `background: "#f8f5f0"`
+- Nav header: `backgroundImage: repeating-linear-gradient(90deg,...)` removed
+- All remaining `T.stripe` references replaced with `#f8f5f0`
