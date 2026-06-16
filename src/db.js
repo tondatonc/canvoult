@@ -118,7 +118,6 @@ export async function deleteWallPhoto(id) {
   });
 }
 
-
 export async function updateWallPhoto(photo) {
   return request(`${base("wall_photos")}?id=eq.${encodeURIComponent(photo.id)}`, {
     method: "PATCH",
@@ -128,6 +127,32 @@ export async function updateWallPhoto(photo) {
       caption: photo.caption || null,
     }),
   });
+}
+
+// ─── PINNED ───────────────────────────────────────────────────────────────────
+// Table: pinned (can_id text, type text)  PK: (can_id, type)
+// type = 'can' | 'wish'
+
+export async function getPinned() {
+  const rows = await request(`${base("pinned")}?select=can_id,type`, {
+    headers: headers(),
+  });
+  return rows || [];
+}
+
+export async function pinItem(id, type = "can") {
+  return request(base("pinned"), {
+    method: "POST",
+    headers: headers({ Prefer: "resolution=ignore-duplicates,return=minimal" }),
+    body: JSON.stringify({ can_id: id, type }),
+  });
+}
+
+export async function unpinItem(id, type = "can") {
+  return request(
+    `${base("pinned")}?can_id=eq.${encodeURIComponent(id)}&type=eq.${type}`,
+    { method: "DELETE", headers: headers({ Prefer: "return=minimal" }) }
+  );
 }
 
 // ─── ROW CONVERTERS ───────────────────────────────────────────────────────────
