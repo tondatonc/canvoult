@@ -1600,9 +1600,8 @@ function CollectionPage({ T, L, isAdmin }) {
 
   useEffect(() => {
     if (!db.isConfigured()) { setCans(SAMPLE_CANS); setLoading(false); return; }
-    Promise.all([db.getCans(), db.getPinned()]).then(([rows, pinnedRows]) => {
+    db.getCans().then(rows => {
       const loaded = rows.map(db.rowToCan);
-      setPinned(pinnedRows.filter(r => r.type === "can").map(r => r.can_id));
       setCans(loaded);
       setLoading(false);
       // Deep link: ?can=ID opens that can's detail modal
@@ -1611,13 +1610,16 @@ function CollectionPage({ T, L, isAdmin }) {
       if (canId) {
         const target = loaded.find(c => c.id === canId);
         if (target) setModal({ can: target });
-        // Remove just the ?can= param, preserving other filter params
         params.delete("can");
         const qs = params.toString();
         skipUrlSync.current = true;
         window.history.replaceState({}, "", qs ? `/?${qs}` : "/");
         setTimeout(() => { skipUrlSync.current = false; }, 50);
       }
+      // Load pinned separately — non-fatal if table doesn't exist yet
+      db.getPinned().then(pinnedRows => {
+        setPinned(pinnedRows.filter(r => r.type === "can").map(r => r.can_id));
+      }).catch(() => {});
     }).catch(() => { setCans(SAMPLE_CANS); setLoading(false); });
   }, []);
 
@@ -1877,10 +1879,13 @@ function WishlistPage({ T, L, isAdmin }) {
 
   useEffect(() => {
     if (!db.isConfigured()) { setWishes(SAMPLE_WISHLIST); setLoading(false); return; }
-    Promise.all([db.getWishlist(), db.getPinned()]).then(([rows, pinnedRows]) => {
+    db.getWishlist().then(rows => {
       setWishes(rows.map(db.rowToWish));
-      setPinnedWishes(pinnedRows.filter(r => r.type === "wish").map(r => r.can_id));
       setLoading(false);
+      // Load pinned separately — non-fatal if table doesn't exist yet
+      db.getPinned().then(pinnedRows => {
+        setPinnedWishes(pinnedRows.filter(r => r.type === "wish").map(r => r.can_id));
+      }).catch(() => {});
     }).catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
   }, []);
 
@@ -3017,7 +3022,7 @@ export default function App() {
       `}</style>
 
       {/* HEADER */}
-      <header className="hdr" style={{ background: "#C8102E", backgroundImage: "repeating-linear-gradient(90deg,transparent 0,transparent 28px,#00000012 28px,#00000012 29px)", borderBottom: "5px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
+      <header className="hdr" style={{ background: "#C8102E", borderBottom: "3px solid #8a0000", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 24px #00000055" }}>
         <div style={{ background: "#8a0000", padding: "3px 12px", display: "flex", justifyContent: "center", gap: 16, overflow: "hidden" }}>
           {[L.est, L.every].map(t => (
             <span key={t} style={{ color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.2em", whiteSpace: "nowrap" }}>{t}</span>
