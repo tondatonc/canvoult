@@ -110,6 +110,19 @@ function saveCustomColors(colors) {
   localStorage.setItem("cv_tag_colors", JSON.stringify(colors));
 }
 
+// Tag roles: "brand" | "size" | null — stored in localStorage
+function loadTagRoles() {
+  try { return JSON.parse(localStorage.getItem("cv_tag_roles") || "{}"); } catch { return {}; }
+}
+function saveTagRoles(roles) {
+  localStorage.setItem("cv_tag_roles", JSON.stringify(roles));
+}
+
+// A brand tag must have a custom color assigned
+function isBrandTag(tag, customColors) {
+  return !!customColors[tag];
+}
+
 function getCanColor(tags = [], customColors = {}) {
   for (const tag of tags) {
     const key = tag.toLowerCase().replace(/\s/g, "-");
@@ -153,6 +166,57 @@ async function compressCanPhoto(file) {
   });
 }
 
+// Auto-crop a PNG to its non-transparent (opaque) bounding box.
+// Returns a File (PNG, to preserve transparency) cropped to content, or the
+// original file unchanged if it's not a PNG / has no transparency / fails.
+async function autoCropToOpaqueBounds(file) {
+  const isPng = file.type === "image/png" || /\.png$/i.test(file.name || "");
+  if (!isPng) return file;
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const { data } = ctx.getImageData(0, 0, w, h);
+        const ALPHA_THRESHOLD = 8; // pixels with alpha <= this count as transparent
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        for (let y = 0; y < h; y++) {
+          const rowStart = y * w * 4;
+          for (let x = 0; x < w; x++) {
+            const a = data[rowStart + x * 4 + 3];
+            if (a > ALPHA_THRESHOLD) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX < minX || maxY < minY) { resolve(file); return; } // fully transparent — bail out
+        if (minX === 0 && minY === 0 && maxX === w - 1 && maxY === h - 1) { resolve(file); return; } // already tight
+        const cw = maxX - minX + 1, ch = maxY - minY + 1;
+        const out = document.createElement("canvas");
+        out.width = cw; out.height = ch;
+        out.getContext("2d").drawImage(img, minX, minY, cw, ch, 0, 0, cw, ch);
+        out.toBlob(blob => {
+          if (!blob) { resolve(file); return; }
+          resolve(new File([blob], file.name || "cropped.png", { type: "image/png" }));
+        }, "image/png");
+      } catch {
+        resolve(file); // e.g. canvas tainted by CORS — fall back to original
+      }
+    };
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+}
+
 // Compress wall photos to just under 4MB Vercel limit, max quality
 async function compressWallPhoto(file) {
   return new Promise(resolve => {
@@ -169,7 +233,7 @@ async function compressWallPhoto(file) {
       const canvas = document.createElement("canvas");
       canvas.width = width; canvas.height = height;
       canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      const target = 3.8 * 1024 * 1024; // 3.8 MB — just under 4MB limit
+      const target = 2.2 * 1024 * 1024; // 2.2 MB — safe margin under Vercel's ~4.5MB serverless body limit
       const tryQ = (q) => {
         canvas.toBlob(blob => {
           if (blob.size > target && q > 0.4) tryQ(Math.round((q - 0.05) * 100) / 100);
@@ -590,6 +654,21 @@ function TagPill({ tag, active, onClick, onRemove, T, count }) {
   );
 }
 
+// Grid modes in zoom order: grid5 → grid3 → grid2 → tile
+const GRID_MODES = ["grid5", "grid3", "grid2", "tile"];
+
+// Ctrl/Cmd + scroll wheel cycles through grid zoom levels
+function makeGridZoomWheelHandler(viewMode, setViewMode) {
+  return (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const idx = GRID_MODES.indexOf(viewMode);
+    if (idx === -1) return;
+    if (e.deltaY < 0 && idx > 0) setViewMode(GRID_MODES[idx - 1]); // scroll up = zoom in
+    else if (e.deltaY > 0 && idx < GRID_MODES.length - 1) setViewMode(GRID_MODES[idx + 1]); // scroll down = zoom out
+  };
+}
+
 function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
   const sorts = [
     { v: "newest", l: L.sortNewest },
@@ -597,34 +676,50 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     { v: "az", l: L.sortAZ },
     { v: "za", l: L.sortZA },
     { v: "brand", l: L.sortBrand },
+    { v: "tag", l: L.sortTag },
     { v: "price_asc", l: L.sortPriceAsc },
     { v: "price_desc", l: L.sortPriceDesc },
     { v: "countries", l: L.sortCountries },
   ];
+
+  const curIdx = GRID_MODES.indexOf(viewMode);
+  const canZoomIn = curIdx > 0;
+  const canZoomOut = curIdx < GRID_MODES.length - 1;
+
+  const btnStyle = (active) => ({
+    padding: "4px 10px", borderRadius: "999px",
+    fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em",
+    background: active ? "#C8102E" : T.bgCard,
+    color: active ? "#fff" : T.textMuted,
+    border: `1.5px solid ${active ? "#C8102E" : T.border}`,
+    cursor: "pointer", transition: "all 0.15s",
+  });
+
+  const iconFor = (v) => v === "grid5" ? "▦" : v === "grid3" ? "⊞" : v === "grid2" ? "▣" : "▤";
+
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
       <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em" }}>{L.sortLabel}</span>
       {sorts.map(s => (
-        <button key={s.v} onClick={() => setSort(s.v)} style={{
-          padding: "4px 12px", borderRadius: "999px",
-          fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em",
-          background: sort === s.v ? "#C8102E" : T.bgCard,
-          color: sort === s.v ? "#fff" : T.textMuted,
-          border: `1.5px solid ${sort === s.v ? "#C8102E" : T.border}`,
-          cursor: "pointer", transition: "all 0.15s",
-        }}>{s.l}</button>
+        <button key={s.v} onClick={() => setSort(s.v)} style={btnStyle(sort === s.v)}>{s.l}</button>
       ))}
-      <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-        {[[["grid", L.gridView], ["tile", L.tileView]]].flat().map(([v, l]) => (
-          <button key={v} onClick={() => setViewMode(v)} style={{
-            padding: "4px 12px", borderRadius: "999px",
-            fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em",
-            background: viewMode === v ? "#C8102E" : T.bgCard,
-            color: viewMode === v ? "#fff" : T.textMuted,
-            border: `1.5px solid ${viewMode === v ? "#C8102E" : T.border}`,
-            cursor: "pointer", transition: "all 0.15s",
-          }}>{l}</button>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+        {/* Zoom out (more items) */}
+        <button
+          onClick={() => canZoomOut && setViewMode(GRID_MODES[curIdx + 1])}
+          title="Zoom out"
+          style={{ ...btnStyle(false), opacity: canZoomOut ? 1 : 0.3, padding: "4px 8px", fontSize: 14 }}>−</button>
+        {/* Current mode icon */}
+        {GRID_MODES.map(v => (
+          <button key={v} onClick={() => setViewMode(v)} style={btnStyle(viewMode === v)} title={v}>
+            {iconFor(v)}
+          </button>
         ))}
+        {/* Zoom in (fewer items) */}
+        <button
+          onClick={() => canZoomIn && setViewMode(GRID_MODES[curIdx - 1])}
+          title="Zoom in"
+          style={{ ...btnStyle(false), opacity: canZoomIn ? 1 : 0.3, padding: "4px 8px", fontSize: 14 }}>+</button>
       </div>
     </div>
   );
@@ -645,6 +740,7 @@ function sortCans(cans, sort) {
     if (sort === "az") return a.name.localeCompare(b.name);
     if (sort === "za") return b.name.localeCompare(a.name);
     if (sort === "brand") return extractBrand(a.name).localeCompare(extractBrand(b.name));
+    if (sort === "tag") { const ta = (a.tags[0] || ""); const tb = (b.tags[0] || ""); return ta.localeCompare(tb) || a.name.localeCompare(b.name); }
     if (sort === "price_asc") {
       const pa = parsePrice(a.price), pb = parsePrice(b.price);
       if (pa === null && pb === null) return 0;
@@ -965,27 +1061,18 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
   const [sharedCountries, setSharedCountries] = useState([]);
   const [sharedDateUnknown, setSharedDateUnknown] = useState(false);
   const [sharedDate, setSharedDate] = useState("");
-  const [cropIdx, setCropIdx] = useState(null); // index of item being cropped
-  const [autoCropQueue, setAutoCropQueue] = useState([]); // indices waiting for auto-crop
+  const [cropIdx, setCropIdx] = useState(null); // index of item being manually recropped (only set on explicit click)
   const [perTagInput, setPerTagInput] = useState({}); // {idx: inputValue}
   const [perItemDates, setPerItemDates] = useState({}); // {idx: {date,dateUnknown}}
   const fileRef = useRef();
 
-  // Auto-crop: pop next index from queue and open crop modal
-  useEffect(() => {
-    if (cropIdx === null && autoCropQueue.length > 0) {
-      const [next, ...rest] = autoCropQueue;
-      setAutoCropQueue(rest);
-      setCropIdx(next);
-    }
-  }, [cropIdx, autoCropQueue]);
-
-  const handleFiles = (files) => {
+  const handleFiles = async (files) => {
     const items = Array.from(files).map(f => ({
       file: f,
       previewUrl: URL.createObjectURL(f),
-      croppedFile: null, // set after cropping
+      croppedFile: null, // set after auto-crop or manual recrop
       croppedUrl: null,
+      autoCropped: false,
       name: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
       tags: [...sharedTags],
       countries: [...sharedCountries],
@@ -994,8 +1081,16 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
       uploading: false, done: false, url: null, err: null,
     }));
     setQueue(items);
-    // Auto-crop: queue all indices for cropping
-    setAutoCropQueue(items.map((_, idx) => idx));
+    // Silently auto-crop every PNG to its non-transparent bounds — no dialog shown.
+    // Manual recropping is only ever triggered by the user explicitly clicking the ✂️ button.
+    items.forEach((item, idx) => {
+      autoCropToOpaqueBounds(item.file).then(cropped => {
+        if (cropped !== item.file) {
+          const url = URL.createObjectURL(cropped);
+          setQueue(q => q.map((it, i) => i === idx ? { ...it, croppedFile: cropped, croppedUrl: url, autoCropped: true } : it));
+        }
+      });
+    });
   };
 
   const getTagSuggestions = (q) => {
@@ -1024,8 +1119,8 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
 
   const handleCropped = (i, croppedFile) => {
     const url = URL.createObjectURL(croppedFile);
-    updateItem(i, { croppedFile, croppedUrl: url });
-    setCropIdx(null); // useEffect will pick next from autoCropQueue
+    updateItem(i, { croppedFile, croppedUrl: url, autoCropped: false });
+    setCropIdx(null);
   };
 
   const uploadAll = async () => {
@@ -1170,6 +1265,9 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
                       alt=""
                       style={{ width: 120, height: 165, objectFit: "cover", borderRadius: 7, display: "block", border: item.croppedUrl ? "2px solid #C8102E" : `1px solid ${T.border}` }}
                     />
+                    {item.autoCropped && !item.done && (
+                      <div title="Auto-cropped to opaque bounds" style={{ position: "absolute", top: 2, left: 2, background: "#22C55Ecc", borderRadius: 4, padding: "1px 5px", color: "#fff", fontSize: 9, fontFamily: "'Oswald',sans-serif" }}>AUTO</div>
+                    )}
                     {!item.done && !item.uploading && (
                       <button
                         onClick={() => setCropIdx(i)}
@@ -1451,13 +1549,28 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
   const [newColor, setNewColor] = useState("#C8102E");
   const [newHex, setNewHex] = useState("#C8102E");
   const [editHex, setEditHex] = useState({});
+  const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
   const PRESETS = ["#C8102E","#FF6B00","#FFCC00","#22C55E","#00843D","#3B82F6","#004B93","#8B5CF6","#EC4899","#14B8A6","#F97316","#888888"];
   const isValidHex = h => /^#[0-9A-Fa-f]{6}$/.test(h);
 
   const coloredTags = Object.keys(colors).sort();
   const builtinTags = Object.keys(BRAND_COLORS).filter(k => k !== "default" && !colors[k]).sort();
 
+  // Brand tags = tags that have an explicit color (custom or built-in)
+  const brandTagsWithColor = [...new Set([...Object.keys(colors), ...Object.keys(BRAND_COLORS).filter(k => k !== "default")])].sort();
+  // Tags currently marked as "size" role
+  const sizeTagList = Object.keys(tagRoles).filter(t => tagRoles[t] === "size").sort();
+  // Tags that are neither colored (brand) nor marked size — candidates to organize
+  const uncategorizedTags = allTags.filter(t => !colors[t] && !BRAND_COLORS[t] && tagRoles[t] !== "size").sort();
 
+  const toggleSizeRole = (tag) => {
+    setTagRoles(r => {
+      const next = { ...r };
+      if (next[tag] === "size") delete next[tag];
+      else next[tag] = "size";
+      return next;
+    });
+  };
 
   const addTag = () => {
     const t = newTag.trim().toLowerCase().replace(/\s+/g, "-");
@@ -1545,7 +1658,47 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
         </div>
       </div>
 
-      <button onClick={() => { saveCustomColors(colors); onSave(colors); onClose(); }} style={{ width: "100%", padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
+      {/* Brand tag verification — confirms which tags are recognized as brands (have a color) */}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>BRAND TAGS <span style={{ fontFamily: "Georgia,serif", fontSize: 9, fontStyle: "italic", letterSpacing: 0, textTransform: "none" }}>— a tag counts as a brand once it has a color</span></p>
+        {brandTagsWithColor.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {brandTagsWithColor.map(tag => (
+              <div key={tag} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", background: "#22C55E11", border: "1.5px solid #22C55E55", borderRadius: "999px" }}>
+                <div style={{ width: 9, height: 9, borderRadius: "50%", background: colors[tag] || BRAND_COLORS[tag] }} />
+                <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>#{tag}</span>
+                <span style={{ color: "#22C55E", fontSize: 11 }}>✓</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textFaint, fontStyle: "italic" }}>No brand tags have a color assigned yet.</p>
+        )}
+        {uncategorizedTags.length > 0 && (
+          <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: "#FF6B00", marginTop: 8 }}>
+            ⚠ {uncategorizedTags.length} tag{uncategorizedTags.length === 1 ? "" : "s"} without a color, not marked as size: {uncategorizedTags.map(t => `#${t}`).join(", ")}
+          </p>
+        )}
+      </div>
+
+      {/* Size tags — tags marked as "size" are kept separate from brand/other tags in filters */}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>SIZE TAGS <span style={{ fontFamily: "Georgia,serif", fontSize: 9, fontStyle: "italic", letterSpacing: 0, textTransform: "none" }}>— tap a tag to mark/unmark as size (e.g. 330ml, 500ml)</span></p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {allTags.map(tag => {
+            const isSize = tagRoles[tag] === "size";
+            return (
+              <div key={tag} onClick={() => toggleSizeRole(tag)}
+                style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", background: isSize ? "#3B82F622" : T.bgInput, border: `1.5px solid ${isSize ? "#3B82F6" : T.border}`, borderRadius: "999px", cursor: "pointer" }}>
+                <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: isSize ? "#3B82F6" : T.textMuted }}>#{tag}</span>
+                {isSize && <span style={{ color: "#3B82F6", fontSize: 11 }}>📏</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <button onClick={() => { saveCustomColors(colors); saveTagRoles(tagRoles); onSave(colors); onClose(); }} style={{ width: "100%", padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
         SAVE COLORS
       </button>
     </ModalShell>
@@ -1577,7 +1730,7 @@ function CollectionPage({ T, L, isAdmin }) {
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [activeTags, setActiveTags] = useState(() => { const t = searchParams.get("tag"); return t ? t.split(",").filter(Boolean) : []; });
   const [sort, setSort] = useState(searchParams.get("sort") || "newest");
-  const [viewMode, setViewMode] = useState(searchParams.get("view") || "grid");
+  const [viewMode, setViewMode] = useState(() => { const v = searchParams.get("view"); return v === "grid" ? "grid3" : (v || "grid3"); });
   const [modal, setModal] = useState(null);
   const [pinned, setPinned] = useState([]);
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
@@ -1590,7 +1743,7 @@ function CollectionPage({ T, L, isAdmin }) {
     if (search) p.set("q", search);
     if (activeTags.length > 0) p.set("tag", activeTags.join(","));
     if (sort !== "newest") p.set("sort", sort);
-    if (viewMode !== "grid") p.set("view", viewMode);
+    if (viewMode !== "grid3") p.set("view", viewMode);
     if (activeCountry) p.set("country", activeCountry);
     const qs = p.toString();
     navigate(qs ? `/?${qs}` : "/", { replace: true });
@@ -1625,10 +1778,18 @@ function CollectionPage({ T, L, isAdmin }) {
 
   const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const [tagSortMode, setTagSortMode] = useState("alpha"); // "alpha" | "count"
+  const [tagSearch, setTagSearch] = useState("");
+  const [tagRoles] = useState(() => loadTagRoles());
   const allTagsRaw = [...new Set(cans.flatMap(c => c.tags))];
-  const allTags = tagSortMode === "count"
-    ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0))
+  const allTagsSorted = tagSortMode === "count"
+    ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
     : [...allTagsRaw].sort();
+  // Tags marked as "size" are shown in a separate row from regular tags
+  const sizeTagsAll = allTagsSorted.filter(t => tagRoles[t] === "size");
+  const regularTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size");
+  const tagSearchLow = tagSearch.trim().toLowerCase();
+  const allTags = (tagSearchLow ? regularTagsAll.filter(t => t.includes(tagSearchLow)) : regularTagsAll);
+  const sizeTags = (tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll);
   const allCountries = [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort();
 
   const baseFiltered = cans.filter(can => {
@@ -1714,12 +1875,14 @@ function CollectionPage({ T, L, isAdmin }) {
       </div>
 
       {/* ── Tag filters ── */}
-      {allTags.length > 0 && (
+      {allTagsRaw.length > 0 && (
         <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em" }}>{L.filterTag}</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7, gap: 8 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
+            <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
+              style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
             <button onClick={() => setTagSortMode(m => m === "alpha" ? "count" : "alpha")}
-              style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", letterSpacing: "0.08em" }}>
+              style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", letterSpacing: "0.08em", flexShrink: 0 }}>
               {tagSortMode === "alpha" ? "A→Z" : "#"}
             </button>
           </div>
@@ -1727,6 +1890,14 @@ function CollectionPage({ T, L, isAdmin }) {
             {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
             {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
           </div>
+          {sizeTags.length > 0 && (
+            <>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginTop: 8, marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1753,21 +1924,23 @@ function CollectionPage({ T, L, isAdmin }) {
       {/* ── Sort + view ── */}
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
 
-      {/* Grid / Tile */}
+      {/* Grid / Tile — Ctrl/Cmd + scroll to zoom */}
+      <div onWheel={makeGridZoomWheelHandler(viewMode, setViewMode)}>
       {allFiltered.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>🫙</div>
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>{L.noCansFound}</p>
         </div>
-      ) : viewMode === "grid" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
-        </div>
-      ) : (
+      ) : viewMode === "tile" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${viewMode === "grid5" ? 5 : viewMode === "grid2" ? 2 : 3},1fr)`, gap: viewMode === "grid5" ? 6 : 10 }}>
+          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid5"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+        </div>
       )}
+      </div>
 
       {/* Modals */}
       {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTags} />}
@@ -1793,14 +1966,13 @@ function CollectionPage({ T, L, isAdmin }) {
   );
 }
 
-function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
+function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLabel = false }) {
   const color = getCanColor(can.tags, customColors);
   return (
     <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 12px 30px ${color}33`; }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 12px 30px #00000022"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010,0 1px 0 #fff inset"; }}>
       <div style={{ width: "100%", aspectRatio: "3/4", background: "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
         {onPin && (
           <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000044", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
             {pinned ? "📌" : "📍"}
@@ -1810,9 +1982,11 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
           {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={can.name} />}
         </div>
       </div>
-      <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
-      </div>
+      {!hideLabel && (
+        <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1851,7 +2025,7 @@ function WishlistPage({ T, L, isAdmin }) {
 
   const searchParams = new URLSearchParams(location.search);
   const [sort, setSort] = useState(searchParams.get("sort") || "newest");
-  const [viewMode, setViewMode] = useState(searchParams.get("view") || "grid");
+  const [viewMode, setViewMode] = useState(() => { const v = searchParams.get("view"); return v === "grid" ? "grid3" : (v || "grid3"); });
   const [activeTags, setActiveTags] = useState(() => { const t = searchParams.get("tag"); return t ? t.split(",").filter(Boolean) : []; });
   const [activeCountry, setActiveCountry] = useState(searchParams.get("country") || null);
   const [modal, setModal] = useState(null);
@@ -1860,7 +2034,7 @@ function WishlistPage({ T, L, isAdmin }) {
     const p = new URLSearchParams();
     if (activeTags.length > 0) p.set("tag", activeTags.join(","));
     if (sort !== "newest") p.set("sort", sort);
-    if (viewMode !== "grid") p.set("view", viewMode);
+    if (viewMode !== "grid3") p.set("view", viewMode);
     if (activeCountry) p.set("country", activeCountry);
     const qs = p.toString();
     navigate(qs ? `/wishlist?${qs}` : "/wishlist", { replace: true });
@@ -1889,8 +2063,15 @@ function WishlistPage({ T, L, isAdmin }) {
     }).catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
   }, []);
 
-  const allTags = [...new Set(wishes.flatMap(w => w.tags))].sort();
+  const [tagSearch, setTagSearch] = useState("");
+  const [tagRoles] = useState(() => loadTagRoles());
+  const allTagsRaw = [...new Set(wishes.flatMap(w => w.tags))].sort();
   const tagCounts = wishes.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
+  const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
+  const regularTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size");
+  const tagSearchLow = tagSearch.trim().toLowerCase();
+  const allTags = (tagSearchLow ? regularTagsAll.filter(t => t.includes(tagSearchLow)) : regularTagsAll);
+  const sizeTags = (tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll);
 
   // All unique countries that have been filled in
   const allCountries = [...new Set(wishes.flatMap(w => w.countries || []).filter(Boolean))].sort();
@@ -1937,13 +2118,25 @@ function WishlistPage({ T, L, isAdmin }) {
 
       {loading ? <LoadingSpinner T={T} /> : <>
       {/* ── Tag filter ── */}
-      {allTags.length > 0 && (
+      {allTagsRaw.length > 0 && (
         <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterTag}</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7, gap: 8 }}>
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
+            <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
+              style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
             {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
           </div>
+          {sizeTags.length > 0 && (
+            <>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginTop: 8, marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1996,14 +2189,18 @@ function WishlistPage({ T, L, isAdmin }) {
           </p>
           {isAdmin && activeFilters === 0 && <p style={{ fontFamily: "Georgia,serif", color: T.textFaint, fontSize: 12, marginTop: 6 }}>{L.noWishesHint}</p>}
         </div>
-      ) : viewMode === "grid" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
-        </div>
       ) : (
+      <div onWheel={makeGridZoomWheelHandler(viewMode, setViewMode)}>
+      {viewMode === "tile" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${viewMode === "grid5" ? 5 : viewMode === "grid2" ? 2 : 3},1fr)`, gap: viewMode === "grid5" ? 6 : 10 }}>
+          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid5"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
+        </div>
+      )}
+      </div>
       )}
 
       {modal === "add" && <AddEditModal T={T} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTags} />}
@@ -2031,23 +2228,24 @@ function WishlistPage({ T, L, isAdmin }) {
   );
 }
 
-function WishGridCard({ wish, i, T, onClick, pinned = false, onPin = null }) {
+function WishGridCard({ wish, i, T, onClick, pinned = false, onPin = null, hideLabel = false }) {
   const color = getCanColor(wish.tags);
   return (
     <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #C8102E22"; }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #00000022"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : "#e8e0d8"; e.currentTarget.style.boxShadow = "0 2px 8px #0000000a"; }}>
       <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 30%, ${color}22 0%, transparent 70%)` }} />
         {onPin && <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000033", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{pinned ? "📌" : "📍"}</button>}
         <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
         <div style={{ width: "55%", height: "80%", opacity: 0.8, filter: "grayscale(20%)", position: "relative" }}>
           {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
       </div>
-      <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
-      </div>
+      {!hideLabel && (
+        <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2209,6 +2407,10 @@ function CanWallPage({ T, L, isAdmin }) {
     setCropSrc(null);
     setUploading(true); setUploadErr("");
     try {
+      // Safety net: even though CropModal targets a safe size, re-compress here to
+      // guarantee we stay well under Vercel's serverless function body limit (~4.5MB),
+      // which is what caused intermittent 413 errors and silent base64 fallbacks before.
+      const safeFile = await compressWallPhoto(croppedFile);
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
@@ -2216,7 +2418,7 @@ function CanWallPage({ T, L, isAdmin }) {
           "x-filename": `wall/${Date.now()}.jpg`,
           "x-canvault-auth": atob(_PH),
         },
-        body: croppedFile,
+        body: safeFile,
       });
       if (res.ok) {
         const { url } = await res.json();
@@ -2300,8 +2502,8 @@ function CanWallPage({ T, L, isAdmin }) {
         </div>
       )}
 
-      {/* Crop modal for wall photos — no compression, just crop at max quality */}
-      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.97} targetKB={3900} originalFile={pendingEditFile} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingEditFile(null); URL.revokeObjectURL(cropSrc); }} />}
+      {/* Crop modal for wall photos — high quality, but capped well under Vercel's ~4.5MB serverless function body limit to avoid 413s */}
+      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.92} targetKB={2200} originalFile={pendingEditFile} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingEditFile(null); URL.revokeObjectURL(cropSrc); }} />}
 
       {/* Add photo modal */}
       {addModal && (
@@ -2720,7 +2922,7 @@ function StatsPage({ T, L, isAdmin }) {
             if (uc) setCans(p => p.map(c => uc[c.id] ? { ...c, image: uc[c.id] } : c));
             if (uw) setWishes(p => p.map(w => uw[w.id] ? { ...w, image: uw[w.id] } : w));
           }} />
-        <OrphanCleanupTool T={T} cans={cans} wishes={wishes} />
+        <OrphanCleanupTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos} />
       </div>}
     </div>
   );
@@ -2729,7 +2931,7 @@ function StatsPage({ T, L, isAdmin }) {
 // ─── ORPHAN BLOB CLEANUP TOOL ─────────────────────────────────────────────────
 // Finds Blob images not referenced by any can or wish, and deletes them.
 
-function OrphanCleanupTool({ T, cans, wishes }) {
+function OrphanCleanupTool({ T, cans, wishes, wallPhotos = [] }) {
   const [state, setState] = useState("idle"); // idle | scanning | confirm | deleting | done
   const [orphans, setOrphans] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -2745,14 +2947,17 @@ function OrphanCleanupTool({ T, cans, wishes }) {
     try { return new URL(url).pathname; } catch { return url; }
   };
 
-  // All known URLs referenced in Supabase — indexed both by normalized URL and pathname
+  // All known URLs referenced in Supabase — indexed both by normalized URL and pathname.
+  // Wall photos must be included here too, or every wall/ image gets flagged as an orphan.
   const knownNormalized = new Set([
     ...cans.map(c => c.image).filter(Boolean).map(normalizeUrl),
     ...wishes.map(w => w.image).filter(Boolean).map(normalizeUrl),
+    ...wallPhotos.map(p => p.image).filter(Boolean).map(normalizeUrl),
   ]);
   const knownPathnames = new Set([
     ...cans.map(c => c.image).filter(Boolean).map(normalizePathname),
     ...wishes.map(w => w.image).filter(Boolean).map(normalizePathname),
+    ...wallPhotos.map(p => p.image).filter(Boolean).map(normalizePathname),
   ]);
 
   const isKnown = (blobUrl) =>
@@ -2947,7 +3152,8 @@ export default function App() {
     loading: "NAČÍTÁNÍ…",
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
-    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
+    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
+    searchTags: "hledat štítky…", sizeTags: "VELIKOST",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
     foundItTitle: "NALEZENO", est: "★ ZAL. 2020 ★", every: "★ KAŽDÁ PLECHOVKA SE POČÍTÁ ★",
@@ -2981,7 +3187,8 @@ export default function App() {
     loading: "LOADING…",
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
-    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
+    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
+    searchTags: "search tags…", sizeTags: "SIZE",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
     foundItTitle: "FOUND IT", est: "★ EST. 2020 ★", every: "★ EVERY CAN COUNTS ★",
