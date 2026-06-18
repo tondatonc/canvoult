@@ -1754,6 +1754,7 @@ function CollectionPage({ T, L, isAdmin }) {
   const [viewMode, setViewMode] = useState(() => { const v = searchParams.get("view"); return v === "grid" ? "grid3" : (v || "grid3"); });
   const [modal, setModal] = useState(null);
   const [pinned, setPinned] = useState([]);
+  const [loadError, setLoadError] = useState(null); // surfaces real Supabase fetch failures instead of silently showing sample data
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
   const [activeCountry, setActiveCountry] = useState(searchParams.get("country") || null);
 
@@ -1794,7 +1795,11 @@ function CollectionPage({ T, L, isAdmin }) {
       db.getPinned().then(pinnedRows => {
         setPinned(pinnedRows.filter(r => r.type === "can").map(r => r.can_id));
       }).catch(() => {});
-    }).catch(() => { setCans(SAMPLE_CANS); setLoading(false); });
+    }).catch(err => {
+      console.error("CanVault: failed to load cans from Supabase —", err);
+      setLoadError(err.message || String(err));
+      setCans(SAMPLE_CANS); setLoading(false);
+    });
   }, []);
 
   const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
@@ -1865,6 +1870,11 @@ function CollectionPage({ T, L, isAdmin }) {
       {!db.isConfigured() && (
         <div style={{ background: "#FF6B0022", border: "2px solid #FF6B00", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#FF6B00", letterSpacing: "0.1em" }}>
           ⚠️ SUPABASE NOT CONFIGURED — showing sample data. See setup guide.
+        </div>
+      )}
+      {db.isConfigured() && loadError && (
+        <div style={{ background: "#C8102E22", border: "2px solid #C8102E", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.05em" }}>
+          ⚠️ COULDN'T LOAD YOUR CANS FROM SUPABASE — showing sample data instead. <span style={{ fontFamily: "monospace", letterSpacing: "normal", opacity: 0.8 }}>{loadError}</span>
         </div>
       )}
       {loading ? <LoadingSpinner T={T} /> : <>
@@ -2068,6 +2078,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
 function WishlistPage({ T, L, isAdmin }) {
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -2108,7 +2119,11 @@ function WishlistPage({ T, L, isAdmin }) {
       db.getPinned().then(pinnedRows => {
         setPinnedWishes(pinnedRows.filter(r => r.type === "wish").map(r => r.can_id));
       }).catch(() => {});
-    }).catch(() => { setWishes(SAMPLE_WISHLIST); setLoading(false); });
+    }).catch(err => {
+      console.error("CanVault: failed to load wishlist from Supabase —", err);
+      setLoadError(err.message || String(err));
+      setWishes(SAMPLE_WISHLIST); setLoading(false);
+    });
   }, []);
 
   const [tagSearch, setTagSearch] = useState("");
@@ -2172,6 +2187,11 @@ function WishlistPage({ T, L, isAdmin }) {
       {loading ? <LoadingSpinner T={T} /> : <>
       {/* Controls stay at a comfortable reading width even when the page itself goes full-bleed */}
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {db.isConfigured() && loadError && (
+        <div style={{ background: "#C8102E22", border: "2px solid #C8102E", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.05em" }}>
+          ⚠️ COULDN'T LOAD YOUR WISHLIST FROM SUPABASE — showing sample data instead. <span style={{ fontFamily: "monospace", letterSpacing: "normal", opacity: 0.8 }}>{loadError}</span>
+        </div>
+      )}
       {/* ── Tag filter ── */}
       {allTagsRaw.length > 0 && (
         <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
