@@ -657,6 +657,16 @@ function TagPill({ tag, active, onClick, onRemove, T, count }) {
 // Grid modes in zoom order: grid5 → grid3 → grid2 → tile
 const GRID_MODES = ["grid5", "grid3", "grid2", "tile"];
 
+// Column template per grid mode. grid5 and grid3 use auto-fill with a minmax floor so
+// the grid naturally fills the full available width with MORE than 5/3 columns on wide
+// desktop screens, instead of stretching a fixed count of oversized cards. grid2 stays a
+// fixed 2 columns since it's meant to feel like a deliberate close-up "zoomed in" view.
+function gridColumnsFor(viewMode) {
+  if (viewMode === "grid5") return "repeat(auto-fill, minmax(110px, 1fr))";
+  if (viewMode === "grid2") return "repeat(2, 1fr)";
+  return "repeat(auto-fill, minmax(170px, 1fr))"; // grid3
+}
+
 // Ctrl/Cmd + scroll wheel cycles through grid zoom levels
 function makeGridZoomWheelHandler(viewMode, setViewMode) {
   return (e) => {
@@ -973,12 +983,12 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ width: "min(220px, 55vw)", margin: "0 auto 16px", filter: `drop-shadow(0 10px 24px ${color}66)` }}>
+        <div style={{ width: "min(220px, 55vw)", margin: "0 auto 16px", filter: "drop-shadow(0 8px 18px #00000022)" }}>
           {can.image
             ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "auto", maxHeight: "45vh", objectFit: "contain", borderRadius: 10 }} />
             : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
         </div>
-        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 24, padding: "4px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
+        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 26, padding: "6px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
           {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}`}
         </p>
@@ -1550,6 +1560,7 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
   const [newHex, setNewHex] = useState("#C8102E");
   const [editHex, setEditHex] = useState({});
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
+  const [tab, setTab] = useState("colors"); // "colors" | "roles"
   const PRESETS = ["#C8102E","#FF6B00","#FFCC00","#22C55E","#00843D","#3B82F6","#004B93","#8B5CF6","#EC4899","#14B8A6","#F97316","#888888"];
   const isValidHex = h => /^#[0-9A-Fa-f]{6}$/.test(h);
 
@@ -1558,8 +1569,6 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
 
   // Brand tags = tags that have an explicit color (custom or built-in)
   const brandTagsWithColor = [...new Set([...Object.keys(colors), ...Object.keys(BRAND_COLORS).filter(k => k !== "default")])].sort();
-  // Tags currently marked as "size" role
-  const sizeTagList = Object.keys(tagRoles).filter(t => tagRoles[t] === "size").sort();
   // Tags that are neither colored (brand) nor marked size — candidates to organize
   const uncategorizedTags = allTags.filter(t => !colors[t] && !BRAND_COLORS[t] && tagRoles[t] !== "size").sort();
 
@@ -1589,117 +1598,129 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
       <input value={raw}
         onChange={e => { setRaw(e.target.value); const h = e.target.value.startsWith("#") ? e.target.value : "#" + e.target.value; if (isValidHex(h)) onChange(h); }}
         onBlur={() => { const h = raw.startsWith("#") ? raw : "#" + raw; if (!isValidHex(h)) setRaw(value); }}
-        placeholder="#C8102E" maxLength={7}
-        style={{ width: 82, padding: "5px 8px", background: T.bgCard, border: `1.5px solid ${v ? "#22C55E" : T.border}`, borderRadius: 7, color: T.text, fontFamily: "monospace", fontSize: 12, textAlign: "center" }} />
+        placeholder="C8102E" maxLength={7}
+        style={{ width: 72, padding: "7px 8px", background: T.bgCard, border: `1.5px solid ${v ? "#22C55E" : T.border}`, borderRadius: 8, color: T.text, fontFamily: "monospace", fontSize: 12, textAlign: "center" }} />
     );
   };
 
   const Swatches = ({ cur, onPick }) => (
-    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
       {PRESETS.map(c => (
-        <div key={c} onClick={() => onPick(c)} style={{ width: 22, height: 22, borderRadius: "50%", background: c, cursor: "pointer", border: cur === c ? "2px solid #fff" : "2px solid transparent", boxShadow: cur === c ? `0 0 0 2px ${c}` : "none", flexShrink: 0 }} />
+        <div key={c} onClick={() => onPick(c)} style={{ width: 20, height: 20, borderRadius: "50%", background: c, cursor: "pointer", boxShadow: cur === c ? `0 0 0 2px #fff, 0 0 0 4px ${c}` : "0 1px 2px #00000022", flexShrink: 0, transition: "box-shadow 0.12s" }} />
       ))}
-      {/* Native color picker as last swatch */}
-      <label title="Custom color picker" style={{ width: 22, height: 22, borderRadius: "50%", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)", cursor: "pointer", flexShrink: 0, overflow: "hidden", border: "2px solid transparent" }}>
-        <input type="color" value={cur || "#C8102E"} onChange={e => onPick(e.target.value)} style={{ opacity: 0, width: 0, height: 0, position: "absolute" }} />
+      <label title="Custom color picker" style={{ width: 20, height: 20, borderRadius: "50%", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)", cursor: "pointer", flexShrink: 0, overflow: "hidden", position: "relative", boxShadow: "0 1px 2px #00000022" }}>
+        <input type="color" value={cur || "#C8102E"} onChange={e => onPick(e.target.value)} style={{ opacity: 0, width: "100%", height: "100%", position: "absolute", cursor: "pointer" }} />
       </label>
     </div>
   );
 
+  const SectionLabel = ({ children, hint }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+      <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, fontWeight: 600, color: T.text, letterSpacing: "0.14em", margin: 0 }}>{children}</p>
+      {hint && <span style={{ fontFamily: "Georgia,serif", fontSize: 11, fontStyle: "italic", color: T.textFaint }}>{hint}</span>}
+    </div>
+  );
+
+  const TabBtn = ({ id, label, count }) => (
+    <button onClick={() => setTab(id)} style={{
+      flex: 1, padding: "9px 0", background: "none", border: "none", borderBottom: `2.5px solid ${tab === id ? "#C8102E" : "transparent"}`,
+      color: tab === id ? "#C8102E" : T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: tab === id ? 700 : 500,
+      letterSpacing: "0.1em", cursor: "pointer", transition: "color 0.15s,border-color 0.15s",
+    }}>{label}{typeof count === "number" && count > 0 ? ` · ${count}` : ""}</button>
+  );
+
   return (
     <ModalShell onClose={onClose} T={T}>
-      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Tag Colors</div>
-      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 2 }}>Tag Studio</div>
+      <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textFaint, textAlign: "center", fontStyle: "italic", marginBottom: 16 }}>colors make a tag a brand · roles organize the rest</p>
 
-      {/* Add section */}
-      <div style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
-        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>ADD COLOR TO TAG</p>
-        <div style={{ display: "flex", gap: 7, marginBottom: 10, alignItems: "center" }}>
-          <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && addTag()} placeholder="tag name e.g. monster"
-            style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
-          <div style={{ width: 22, height: 22, borderRadius: "50%", background: newColor, border: "2px solid " + T.border, flexShrink: 0 }} />
-          <HexField value={newHex} onChange={h => { setNewColor(h); setNewHex(h); }} />
-        </div>
-        <Swatches cur={newColor} onPick={c => { setNewColor(c); setNewHex(c); }} />
-        <button onClick={addTag} disabled={!newTag.trim()} style={{ width: "100%", marginTop: 10, padding: "9px", background: newTag.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 8, color: newTag.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: newTag.trim() ? "pointer" : "not-allowed" }}>+ ADD</button>
+      {/* Tabs */}
+      <div style={{ display: "flex", borderBottom: `1.5px solid ${T.border}`, marginBottom: 16 }}>
+        <TabBtn id="colors" label="COLORS" count={brandTagsWithColor.length} />
+        <TabBtn id="roles" label="SIZE ROLES" count={allTags.filter(t => tagRoles[t] === "size").length} />
       </div>
 
-      {/* Custom colored tags */}
-      {coloredTags.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>CUSTOM COLORS</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "28vh", overflowY: "auto" }}>
-            {coloredTags.map(tag => (
-              <div key={tag} style={{ background: T.bgInput, border: `1.5px solid ${colors[tag]}44`, borderLeft: `3px solid ${colors[tag]}`, borderRadius: 9, padding: "10px 12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: colors[tag], flexShrink: 0, boxShadow: `0 0 0 2px ${colors[tag]}44` }} />
-                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.text, flex: 1 }}>#{tag}</span>
-                  <HexField value={editHex[tag] || colors[tag]} onChange={h => { updateColor(tag, h); setEditHex(p => ({ ...p, [tag]: h })); }} />
-                  <button onClick={() => removeColor(tag)} style={{ width: 24, height: 24, background: "#FF444422", border: "1.5px solid #FF444466", borderRadius: 5, color: "#FF4444", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
-                </div>
-                <Swatches cur={colors[tag]} onPick={c => { updateColor(tag, c); setEditHex(p => ({ ...p, [tag]: c })); }} />
+      {tab === "colors" && (
+        <>
+          {/* Add new */}
+          <div style={{ background: "linear-gradient(135deg,#fff,#fdfaf6)", border: `1.5px solid ${T.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 3px #00000008" }}>
+            <SectionLabel>NEW BRAND COLOR</SectionLabel>
+            <div style={{ display: "flex", gap: 8, marginBottom: 11, alignItems: "center" }}>
+              <div style={{ width: 34, height: 34, borderRadius: "50%", background: newColor, flexShrink: 0, boxShadow: `0 0 0 3px #fff, 0 0 0 4px ${T.border}` }} />
+              <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === "Enter" && addTag()} placeholder="tag name, e.g. monster"
+                style={{ flex: 1, padding: "8px 11px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 8, color: T.text, fontFamily: "Georgia,serif", fontSize: 13, minWidth: 0 }} />
+              <span style={{ color: T.textFaint, fontFamily: "monospace", fontSize: 12 }}>#</span>
+              <HexField value={newHex} onChange={h => { setNewColor(h); setNewHex(h); }} />
+            </div>
+            <Swatches cur={newColor} onPick={c => { setNewColor(c); setNewHex(c); }} />
+            <button onClick={addTag} disabled={!newTag.trim()} style={{ width: "100%", marginTop: 12, padding: "10px", background: newTag.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 9, color: newTag.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: newTag.trim() ? "pointer" : "not-allowed", transition: "background 0.15s" }}>ADD COLOR</button>
+          </div>
+
+          {/* Custom colored tags */}
+          {coloredTags.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <SectionLabel>YOUR BRANDS</SectionLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "24vh", overflowY: "auto", paddingRight: 2 }}>
+                {coloredTags.map(tag => (
+                  <div key={tag} style={{ display: "flex", alignItems: "center", gap: 9, background: T.bgInput, borderRadius: 9, padding: "8px 10px 8px 6px" }}>
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: colors[tag], flexShrink: 0 }} />
+                    <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>#{tag}</span>
+                    <Swatches cur={colors[tag]} onPick={c => { updateColor(tag, c); setEditHex(p => ({ ...p, [tag]: c })); }} />
+                    <HexField value={editHex[tag] || colors[tag]} onChange={h => { updateColor(tag, h); setEditHex(p => ({ ...p, [tag]: h })); }} />
+                    <button onClick={() => removeColor(tag)} style={{ width: 24, height: 24, background: "none", border: "none", borderRadius: 6, color: T.textFaint, cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* Built-in brands */}
+          {builtinTags.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <SectionLabel hint="tap to add with its default color">SUGGESTED</SectionLabel>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {builtinTags.map(tag => (
+                  <div key={tag} onClick={() => { setNewTag(tag); setNewColor(BRAND_COLORS[tag]); setNewHex(BRAND_COLORS[tag]); }}
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px 5px 7px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: "999px", cursor: "pointer" }}>
+                    <div style={{ width: 9, height: 9, borderRadius: "50%", background: BRAND_COLORS[tag] }} />
+                    <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>#{tag}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Verification summary */}
+          {uncategorizedTags.length > 0 && (
+            <div style={{ background: "#FF6B0011", border: "1px solid #FF6B0044", borderRadius: 9, padding: "9px 12px", marginBottom: 6 }}>
+              <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#B85400", margin: 0, lineHeight: 1.5 }}>
+                <strong>{uncategorizedTags.length}</strong> tag{uncategorizedTags.length === 1 ? "" : "s"} still without a color or size role — {uncategorizedTags.slice(0, 6).map(t => `#${t}`).join(", ")}{uncategorizedTags.length > 6 ? `, +${uncategorizedTags.length - 6} more` : ""}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "roles" && (
+        <div style={{ marginBottom: 6 }}>
+          <SectionLabel hint="tap to mark/unmark, e.g. 330ml, 500ml">SIZE TAGS</SectionLabel>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {allTags.map(tag => {
+              const isSize = tagRoles[tag] === "size";
+              return (
+                <div key={tag} onClick={() => toggleSizeRole(tag)}
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", background: isSize ? "#3B82F6" : T.bgCard, border: `1px solid ${isSize ? "#3B82F6" : T.border}`, borderRadius: "999px", cursor: "pointer", transition: "background 0.12s,border-color 0.12s" }}>
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: isSize ? "#fff" : T.textMuted }}>#{tag}</span>
+                  {isSize && <span style={{ fontSize: 11 }}>📏</span>}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Built-in brands */}
-      <div style={{ marginBottom: 14 }}>
-        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>BUILT-IN BRANDS <span style={{ fontFamily: "Georgia,serif", fontSize: 9, fontStyle: "italic", letterSpacing: 0, textTransform: "none" }}>— tap to override</span></p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {builtinTags.map(tag => (
-            <div key={tag} onClick={() => { setNewTag(tag); setNewColor(BRAND_COLORS[tag]); setNewHex(BRAND_COLORS[tag]); }}
-              style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "999px", cursor: "pointer" }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: BRAND_COLORS[tag] }} />
-              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>#{tag}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Brand tag verification — confirms which tags are recognized as brands (have a color) */}
-      <div style={{ marginBottom: 14 }}>
-        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>BRAND TAGS <span style={{ fontFamily: "Georgia,serif", fontSize: 9, fontStyle: "italic", letterSpacing: 0, textTransform: "none" }}>— a tag counts as a brand once it has a color</span></p>
-        {brandTagsWithColor.length > 0 ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {brandTagsWithColor.map(tag => (
-              <div key={tag} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", background: "#22C55E11", border: "1.5px solid #22C55E55", borderRadius: "999px" }}>
-                <div style={{ width: 9, height: 9, borderRadius: "50%", background: colors[tag] || BRAND_COLORS[tag] }} />
-                <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>#{tag}</span>
-                <span style={{ color: "#22C55E", fontSize: 11 }}>✓</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textFaint, fontStyle: "italic" }}>No brand tags have a color assigned yet.</p>
-        )}
-        {uncategorizedTags.length > 0 && (
-          <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: "#FF6B00", marginTop: 8 }}>
-            ⚠ {uncategorizedTags.length} tag{uncategorizedTags.length === 1 ? "" : "s"} without a color, not marked as size: {uncategorizedTags.map(t => `#${t}`).join(", ")}
-          </p>
-        )}
-      </div>
-
-      {/* Size tags — tags marked as "size" are kept separate from brand/other tags in filters */}
-      <div style={{ marginBottom: 14 }}>
-        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 8 }}>SIZE TAGS <span style={{ fontFamily: "Georgia,serif", fontSize: 9, fontStyle: "italic", letterSpacing: 0, textTransform: "none" }}>— tap a tag to mark/unmark as size (e.g. 330ml, 500ml)</span></p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {allTags.map(tag => {
-            const isSize = tagRoles[tag] === "size";
-            return (
-              <div key={tag} onClick={() => toggleSizeRole(tag)}
-                style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", background: isSize ? "#3B82F622" : T.bgInput, border: `1.5px solid ${isSize ? "#3B82F6" : T.border}`, borderRadius: "999px", cursor: "pointer" }}>
-                <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: isSize ? "#3B82F6" : T.textMuted }}>#{tag}</span>
-                {isSize && <span style={{ color: "#3B82F6", fontSize: 11 }}>📏</span>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <button onClick={() => { saveCustomColors(colors); saveTagRoles(tagRoles); onSave(colors); onClose(); }} style={{ width: "100%", padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E44" }}>
-        SAVE COLORS
+      <button onClick={() => { saveCustomColors(colors); saveTagRoles(tagRoles); onSave(colors); onClose(); }} style={{ width: "100%", marginTop: 18, padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E33" }}>
+        SAVE
       </button>
     </ModalShell>
   );
@@ -1784,11 +1805,13 @@ function CollectionPage({ T, L, isAdmin }) {
   const allTagsSorted = tagSortMode === "count"
     ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
     : [...allTagsRaw].sort();
-  // Tags marked as "size" are shown in a separate row from regular tags
+  // Three distinct groups: Brand (has a color), Size (marked via tag role), Other (neither)
   const sizeTagsAll = allTagsSorted.filter(t => tagRoles[t] === "size");
-  const regularTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size");
+  const brandTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
+  const otherTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
   const tagSearchLow = tagSearch.trim().toLowerCase();
-  const allTags = (tagSearchLow ? regularTagsAll.filter(t => t.includes(tagSearchLow)) : regularTagsAll);
+  const allTags = (tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll);
+  const brandTags = (tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll);
   const sizeTags = (tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll);
   const allCountries = [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort();
 
@@ -1845,6 +1868,8 @@ function CollectionPage({ T, L, isAdmin }) {
         </div>
       )}
       {loading ? <LoadingSpinner T={T} /> : <>
+      {/* Controls stay at a comfortable reading width even when the page itself goes full-bleed */}
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* Search */}
       <div style={{ position: "relative", marginBottom: 14 }}>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#C8102E", borderRadius: "11px 0 0 11px", fontSize: 17 }}>🔍</div>
@@ -1877,7 +1902,7 @@ function CollectionPage({ T, L, isAdmin }) {
       {/* ── Tag filters ── */}
       {allTagsRaw.length > 0 && (
         <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7, gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, gap: 8 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
             <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
               style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
@@ -1885,18 +1910,34 @@ function CollectionPage({ T, L, isAdmin }) {
               style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", letterSpacing: "0.08em", flexShrink: 0 }}>
               {tagSortMode === "alpha" ? "A→Z" : "#"}
             </button>
+            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 8px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", flexShrink: 0 }}>{L.clear}</span>}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
-          </div>
+
+          {brandTags.length > 0 && (
+            <div style={{ marginBottom: 9 }}>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.brandTagsLabel || "BRAND"}</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {brandTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+              </div>
+            </div>
+          )}
+
+          {allTags.length > 0 && (
+            <div style={{ marginBottom: 9 }}>
+              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+              </div>
+            </div>
+          )}
+
           {sizeTags.length > 0 && (
-            <>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginTop: 8, marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+            <div>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                 {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -1923,8 +1964,10 @@ function CollectionPage({ T, L, isAdmin }) {
 
       {/* ── Sort + view ── */}
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
+      </div>
 
-      {/* Grid / Tile — Ctrl/Cmd + scroll to zoom */}
+      {/* Grid / Tile — Ctrl/Cmd + scroll to zoom. Full page width: on wide screens, grid5
+          and grid3 use auto-fill so more columns appear instead of stretching 5 huge cards. */}
       <div onWheel={makeGridZoomWheelHandler(viewMode, setViewMode)}>
       {allFiltered.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
@@ -1932,11 +1975,11 @@ function CollectionPage({ T, L, isAdmin }) {
           <p style={{ fontFamily: "'Playfair Display',serif", color: T.textMuted, fontSize: 18, fontStyle: "italic" }}>{L.noCansFound}</p>
         </div>
       ) : viewMode === "tile" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
           {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${viewMode === "grid5" ? 5 : viewMode === "grid2" ? 2 : 3},1fr)`, gap: viewMode === "grid5" ? 6 : 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 6 : 10 }}>
           {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid5"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
@@ -1968,11 +2011,16 @@ function CollectionPage({ T, L, isAdmin }) {
 
 function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLabel = false }) {
   const color = getCanColor(can.tags, customColors);
+  // In 5-per-row (hideLabel) mode, drop the card border/shadow/radius entirely for a
+  // cleaner, more compact icon-grid look — just the can image on a plain background.
+  const cardStyle = hideLabel
+    ? { background: "transparent", border: "none", borderRadius: 6, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "none", transition: "transform 0.18s cubic-bezier(.34,1.56,.64,1)" }
+    : { background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" };
   return (
-    <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px) rotate(-1deg)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 12px 30px #00000022"; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010,0 1px 0 #fff inset"; }}>
-      <div style={{ width: "100%", aspectRatio: "3/4", background: "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+    <div onClick={onClick} style={cardStyle}
+      onMouseEnter={e => { e.currentTarget.style.transform = hideLabel ? "scale(1.06)" : "translateY(-5px) rotate(-1deg)"; if (!hideLabel) { e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 12px 30px #00000022"; } }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; if (!hideLabel) { e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010,0 1px 0 #fff inset"; } }}>
+      <div style={{ width: "100%", aspectRatio: "3/4", background: hideLabel ? "transparent" : "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
         {onPin && (
           <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000044", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
             {pinned ? "📌" : "📍"}
@@ -1984,7 +2032,7 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLa
       </div>
       {!hideLabel && (
         <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
         </div>
       )}
     </div>
@@ -2001,7 +2049,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
         {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 13, color: T.text, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
+        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {can.tags.slice(0, 5).map(t => <TagPill key={t} tag={t} T={T} />)}
           {can.tags.length > 5 && <span style={{ fontSize: 9, color: T.textFaint, fontFamily: "'Oswald',sans-serif" }}>+{can.tags.length - 5}</span>}
@@ -2065,12 +2113,15 @@ function WishlistPage({ T, L, isAdmin }) {
 
   const [tagSearch, setTagSearch] = useState("");
   const [tagRoles] = useState(() => loadTagRoles());
+  const [customColors] = useState(() => loadCustomColors());
   const allTagsRaw = [...new Set(wishes.flatMap(w => w.tags))].sort();
   const tagCounts = wishes.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
-  const regularTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size");
+  const brandTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
+  const otherTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
   const tagSearchLow = tagSearch.trim().toLowerCase();
-  const allTags = (tagSearchLow ? regularTagsAll.filter(t => t.includes(tagSearchLow)) : regularTagsAll);
+  const allTags = (tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll);
+  const brandTags = (tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll);
   const sizeTags = (tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll);
 
   // All unique countries that have been filled in
@@ -2108,6 +2159,7 @@ function WishlistPage({ T, L, isAdmin }) {
 
   return (
     <div>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       <div style={{ background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 36 }}>⭐</div>
         <div>
@@ -2115,27 +2167,46 @@ function WishlistPage({ T, L, isAdmin }) {
           <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginTop: 2 }}>{L.wishlistSub} · {wishes.length}</div>
         </div>
       </div>
+      </div>
 
       {loading ? <LoadingSpinner T={T} /> : <>
+      {/* Controls stay at a comfortable reading width even when the page itself goes full-bleed */}
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* ── Tag filter ── */}
       {allTagsRaw.length > 0 && (
         <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7, gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, gap: 8 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
             <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
               style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
+            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 8px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", flexShrink: 0 }}>{L.clear}</span>}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 10px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>{L.clear}</span>}
-          </div>
+
+          {brandTags.length > 0 && (
+            <div style={{ marginBottom: 9 }}>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.brandTagsLabel || "BRAND"}</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {brandTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+              </div>
+            </div>
+          )}
+
+          {allTags.length > 0 && (
+            <div style={{ marginBottom: 9 }}>
+              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+              </div>
+            </div>
+          )}
+
           {sizeTags.length > 0 && (
-            <>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginTop: 8, marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+            <div>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                 {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -2180,6 +2251,7 @@ function WishlistPage({ T, L, isAdmin }) {
           <button onClick={() => { setActiveTags([]); setActiveCountry(null); }} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.1em" }}>{L.clearFilters}</button>
         )}
       </div>
+      </div>
 
       {sorted.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
@@ -2192,11 +2264,11 @@ function WishlistPage({ T, L, isAdmin }) {
       ) : (
       <div onWheel={makeGridZoomWheelHandler(viewMode, setViewMode)}>
       {viewMode === "tile" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
           {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${viewMode === "grid5" ? 5 : viewMode === "grid2" ? 2 : 3},1fr)`, gap: viewMode === "grid5" ? 6 : 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 6 : 10 }}>
           {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid5"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       )}
@@ -2230,20 +2302,23 @@ function WishlistPage({ T, L, isAdmin }) {
 
 function WishGridCard({ wish, i, T, onClick, pinned = false, onPin = null, hideLabel = false }) {
   const color = getCanColor(wish.tags);
+  const cardStyle = hideLabel
+    ? { background: "transparent", border: "none", borderRadius: 6, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "none", transition: "transform 0.18s" }
+    : { background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" };
   return (
-    <div onClick={onClick} style={{ background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s,box-shadow 0.22s,border-color 0.18s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #00000022"; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = pinned ? "#C8102E88" : "#e8e0d8"; e.currentTarget.style.boxShadow = "0 2px 8px #0000000a"; }}>
-      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+    <div onClick={onClick} style={cardStyle}
+      onMouseEnter={e => { e.currentTarget.style.transform = hideLabel ? "scale(1.06)" : "translateY(-5px)"; if (!hideLabel) { e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 10px 26px #00000022"; } }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; if (!hideLabel) { e.currentTarget.style.borderColor = pinned ? "#C8102E88" : "#e8e0d8"; e.currentTarget.style.boxShadow = "0 2px 8px #0000000a"; } }}>
+      <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: hideLabel ? "transparent" : "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
         {onPin && <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000033", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{pinned ? "📌" : "📍"}</button>}
-        <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>
+        {!hideLabel && <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>}
         <div style={{ width: "55%", height: "80%", opacity: 0.8, filter: "grayscale(20%)", position: "relative" }}>
           {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
       </div>
       {!hideLabel && (
         <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 11, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
+          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
         </div>
       )}
     </div>
@@ -2261,7 +2336,7 @@ function WishTileCard({ wish, i, T, onClick, pinned = false, onPin = null }) {
         {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={wish.name} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 13, color: T.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{wish.name}</div>
+        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{wish.name}</div>
         {wish.note && <div style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textMuted, fontStyle: "italic", marginBottom: 4 }}>"{wish.note}"</div>}
         <div style={{ display: "flex", gap: 3 }}>{wish.tags.slice(0, 4).map(t => <TagPill key={t} tag={t} T={T} />)}</div>
       </div>
@@ -2314,10 +2389,10 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#C8102E", letterSpacing: "0.2em", marginBottom: 10 }}>★ ON MY WISHLIST ★</div>
-        <div style={{ width: 80, height: 120, margin: "0 auto 14px", opacity: 0.8, filter: `grayscale(20%) drop-shadow(0 8px 20px ${color}55)` }}>
+        <div style={{ width: 80, height: 120, margin: "0 auto 14px", opacity: 0.8, filter: "grayscale(20%) drop-shadow(0 6px 14px #00000022)" }}>
           {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 10 }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
-        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Satisfy',cursive", fontSize: 22, padding: "4px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
+        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 24, padding: "6px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
         {wish.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 12, letterSpacing: "0.1em", margin: "6px 0" }}>💰 {wish.price}</p>}
         {resolvedCountries.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
@@ -2407,29 +2482,33 @@ function CanWallPage({ T, L, isAdmin }) {
     setCropSrc(null);
     setUploading(true); setUploadErr("");
     try {
-      // Safety net: even though CropModal targets a safe size, re-compress here to
-      // guarantee we stay well under Vercel's serverless function body limit (~4.5MB),
-      // which is what caused intermittent 413 errors and silent base64 fallbacks before.
-      const safeFile = await compressWallPhoto(croppedFile);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "image/jpeg",
-          "x-filename": `wall/${Date.now()}.jpg`,
-          "x-canvault-auth": atob(_PH),
-        },
-        body: safeFile,
+      // Upload directly from the browser to Vercel Blob storage using a short-lived
+      // client token (see api/client-upload-token.mjs). This bypasses the serverless
+      // function's ~4.5MB request-body limit entirely, so wall photos can keep full,
+      // high-quality resolution instead of being squeezed down to dodge 413 errors.
+      const { upload } = await import("@vercel/blob/client");
+      const blob = await upload(`wall/${Date.now()}.jpg`, croppedFile, {
+        access: "public",
+        handleUploadUrl: "/api/client-upload-token",
+        clientPayload: JSON.stringify({ auth: atob(_PH) }),
       });
-      if (res.ok) {
-        const { url } = await res.json();
-        setNewImage(url);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(`${res.status}: ${err.error || "unknown"}`);
-      }
+      setNewImage(blob.url);
     } catch (err) {
-      const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(croppedFile);
-      setUploadErr(`⚠️ Blob failed (${err.message}) — saved locally`);
+      // Fallback: compress to a safe size and go through the regular server upload route
+      try {
+        const safeFile = await compressWallPhoto(croppedFile);
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "image/jpeg", "x-filename": `wall/${Date.now()}.jpg`, "x-canvault-auth": atob(_PH) },
+          body: safeFile,
+        });
+        if (res.ok) { const { url } = await res.json(); setNewImage(url); }
+        else throw new Error(`${res.status}`);
+        setUploadErr(`⚠️ Direct upload failed (${err.message}) — used compressed fallback`);
+      } catch (err2) {
+        const r = new FileReader(); r.onload = e => setNewImage(e.target.result); r.readAsDataURL(croppedFile);
+        setUploadErr(`⚠️ Blob upload failed (${err2.message}) — saved locally`);
+      }
     } finally { setUploading(false); }
   };
 
@@ -2503,7 +2582,10 @@ function CanWallPage({ T, L, isAdmin }) {
       )}
 
       {/* Crop modal for wall photos — high quality, but capped well under Vercel's ~4.5MB serverless function body limit to avoid 413s */}
-      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.92} targetKB={2200} originalFile={pendingEditFile} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingEditFile(null); URL.revokeObjectURL(cropSrc); }} />}
+      {/* Crop modal for wall photos — high quality. Uploads go straight to Blob storage
+          via a client token (see handleCropped), so we're no longer squeezed by the
+          serverless function's ~4.5MB body limit; target a generous ceiling instead. */}
+      {cropSrc && <CropModal src={cropSrc} T={T} quality={0.95} targetKB={6000} originalFile={pendingEditFile} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingEditFile(null); URL.revokeObjectURL(cropSrc); }} />}
 
       {/* Add photo modal */}
       {addModal && (
@@ -3153,7 +3235,7 @@ export default function App() {
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
     sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
-    searchTags: "hledat štítky…", sizeTags: "VELIKOST",
+    searchTags: "hledat štítky…", sizeTags: "VELIKOST", brandTagsLabel: "ZNAČKA", otherTagsLabel: "OSTATNÍ",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
     foundItTitle: "NALEZENO", est: "★ ZAL. 2020 ★", every: "★ KAŽDÁ PLECHOVKA SE POČÍTÁ ★",
@@ -3188,7 +3270,7 @@ export default function App() {
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
     sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
-    searchTags: "search tags…", sizeTags: "SIZE",
+    searchTags: "search tags…", sizeTags: "SIZE", brandTagsLabel: "BRAND", otherTagsLabel: "OTHER",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
     foundItTitle: "FOUND IT", est: "★ EST. 2020 ★", every: "★ EVERY CAN COUNTS ★",
@@ -3212,7 +3294,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "Georgia,'Times New Roman',serif", transition: "background 0.3s,color 0.3s" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Satisfy&family=Oswald:wght@400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Satisfy&family=Oswald:wght@400;600;700&family=Bebas+Neue&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:7px}
         ::-webkit-scrollbar-track{background:${T.bg}}
@@ -3291,8 +3373,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* PAGE CONTENT */}
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 14px" }}>
+      {/* PAGE CONTENT — Collection & Wishlist get the full viewport width so wide grid
+          modes (e.g. 5-per-row) can actually fill the screen with more columns on large
+          monitors, instead of being capped at the same 1100px reading width as Stats/Wall. */}
+      <main style={{ maxWidth: (location.pathname === "/" || location.pathname === "/wishlist") ? "none" : 1100, margin: "0 auto", padding: "20px 14px" }}>
         <Routes>
           <Route path="/" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
           <Route path="/wishlist" element={<WishlistPage T={T} L={L} isAdmin={isAdmin} />} />
