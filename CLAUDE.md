@@ -1,5 +1,5 @@
 # CanVault — Claude Context File
-Last updated: June 2026
+Last updated: June 19, 2026
 
 Live: canvault.vercel.app | Repo: github.com/tondatonc/canvoult
 
@@ -549,4 +549,15 @@ Added `family=Bebas+Neue` to the Google Fonts `@import` (alongside Playfair Disp
 - `WishGridCard` / `WishTileCard` equivalents
 - `CanDetailModal` / `WishDetailModal` title pill (the big red rounded pill) — was previously `'Satisfy',cursive` (script), now Bebas Neue with `fontWeight: 400` + `letterSpacing: 0.04em` to read as a bold condensed display face rather than a thin one.
 - Left untouched: `BulkEditModal`'s item list rows (~line 1530) and the Stats page "anniversary" widget rows (~line 2983) — both dense 12px list rows where the existing Playfair Display reads better.
+
+
+## Session: June 2026 — Can-name font swap (lowercase support) + tag section reorder
+
+### Can name font — Bebas Neue → Fjalla One (supersedes prior session's note above)
+Bebas Neue is an all-caps display face — it has no real lowercase glyphs, so any can name typed in lowercase rendered as small caps instead of true lowercase letters. Replaced with **Fjalla One**, a condensed bold sans-serif with proper lowercase letterforms, keeping the same poster-y display feel.
+- Google Fonts `@import` line: `family=Bebas+Neue` → `family=Fjalla+One` (still alongside Playfair Display/Satisfy/Oswald).
+- All 6 `fontFamily: "'Bebas Neue',sans-serif"` occurrences swapped to `"'Fjalla One',sans-serif"` via global replace — same call sites as documented above (`GridCard`/`TileCard`/`WishGridCard`/`WishTileCard` name labels, `CanDetailModal`/`WishDetailModal` title pill). `fontWeight: 400` and existing `letterSpacing` left as-is.
+
+### Tag filter panel — Size tags now sort above Other tags
+In both tag-filter panels (main Collection page filter bar and the Wishlist page filter bar — these are two separately-coded but structurally identical blocks in `App.jsx`), section render order was Brand → Other → Size. Reordered to **Brand → Size → Other** in both places. No logic changes — `sizeTagsAll`/`brandTagsAll`/`otherTagsAll` derivation (around `tagRoles[t] === "size"` checks) is unchanged, this was purely a JSX reordering of three existing conditional blocks per panel.
 
