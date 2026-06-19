@@ -988,7 +988,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
             ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "auto", maxHeight: "45vh", objectFit: "contain", borderRadius: 10 }} />
             : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
         </div>
-        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 26, padding: "6px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
+        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 26, padding: "6px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
           {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}`}
         </p>
@@ -1932,20 +1932,20 @@ function CollectionPage({ T, L, isAdmin }) {
             </div>
           )}
 
-          {allTags.length > 0 && (
+          {sizeTags.length > 0 && (
             <div style={{ marginBottom: 9 }}>
-              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
               </div>
             </div>
           )}
 
-          {sizeTags.length > 0 && (
+          {allTags.length > 0 && (
             <div>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
               </div>
             </div>
           )}
@@ -2042,7 +2042,7 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLa
       </div>
       {!hideLabel && (
         <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
-          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
+          <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
         </div>
       )}
     </div>
@@ -2059,7 +2059,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
         {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
+        <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {can.tags.slice(0, 5).map(t => <TagPill key={t} tag={t} T={T} />)}
           {can.tags.length > 5 && <span style={{ fontSize: 9, color: T.textFaint, fontFamily: "'Oswald',sans-serif" }}>+{can.tags.length - 5}</span>}
@@ -2211,20 +2211,20 @@ function WishlistPage({ T, L, isAdmin }) {
             </div>
           )}
 
-          {allTags.length > 0 && (
+          {sizeTags.length > 0 && (
             <div style={{ marginBottom: 9 }}>
-              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
               </div>
             </div>
           )}
 
-          {sizeTags.length > 0 && (
+          {allTags.length > 0 && (
             <div>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
+                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
               </div>
             </div>
           )}
@@ -2338,7 +2338,7 @@ function WishGridCard({ wish, i, T, onClick, pinned = false, onPin = null, hideL
       </div>
       {!hideLabel && (
         <div style={{ padding: "8px 10px", borderTop: `1px solid ${T.border}` }}>
-          <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
+          <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{wish.name}</div>
         </div>
       )}
     </div>
@@ -2356,7 +2356,7 @@ function WishTileCard({ wish, i, T, onClick, pinned = false, onPin = null }) {
         {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={wish.name} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{wish.name}</div>
+        <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{wish.name}</div>
         {wish.note && <div style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textMuted, fontStyle: "italic", marginBottom: 4 }}>"{wish.note}"</div>}
         <div style={{ display: "flex", gap: 3 }}>{wish.tags.slice(0, 4).map(t => <TagPill key={t} tag={t} T={T} />)}</div>
       </div>
@@ -2412,7 +2412,7 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
         <div style={{ width: 80, height: 120, margin: "0 auto 14px", opacity: 0.8, filter: "grayscale(20%) drop-shadow(0 6px 14px #00000022)" }}>
           {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 10 }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
-        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Bebas Neue',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 24, padding: "6px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
+        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 24, padding: "6px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
         {wish.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 12, letterSpacing: "0.1em", margin: "6px 0" }}>💰 {wish.price}</p>}
         {resolvedCountries.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
@@ -3314,7 +3314,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "Georgia,'Times New Roman',serif", transition: "background 0.3s,color 0.3s" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Satisfy&family=Oswald:wght@400;600;700&family=Bebas+Neue&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Satisfy&family=Oswald:wght@400;600;700&family=Fjalla+One&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:7px}
         ::-webkit-scrollbar-track{background:${T.bg}}
