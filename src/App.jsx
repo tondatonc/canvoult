@@ -1589,6 +1589,16 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
   };
   const updateColor = (tag, hex) => { if (!isValidHex(hex)) return; setColors(c => ({ ...c, [tag]: hex })); };
   const removeColor = (tag) => { const c = { ...colors }; delete c[tag]; setColors(c); };
+  const makeBrand = (tag) => {
+    setColors(c => {
+      if (c[tag] || BRAND_COLORS[tag]) return c; // already a brand
+      const used = new Set([...Object.values(c), ...Object.values(BRAND_COLORS)]);
+      const unused = PRESETS.filter(p => !used.has(p));
+      const pool = unused.length ? unused : PRESETS;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      return { ...c, [tag]: pick };
+    });
+  };
 
   const HexField = ({ value, onChange }) => {
     const [raw, setRaw] = useState(value);
@@ -1690,12 +1700,21 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
             </div>
           )}
 
-          {/* Verification summary */}
+          {/* Verification summary — click any tag to make it a brand */}
           {uncategorizedTags.length > 0 && (
             <div style={{ background: "#FF6B0011", border: "1px solid #FF6B0044", borderRadius: 9, padding: "9px 12px", marginBottom: 6 }}>
-              <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#B85400", margin: 0, lineHeight: 1.5 }}>
-                <strong>{uncategorizedTags.length}</strong> tag{uncategorizedTags.length === 1 ? "" : "s"} still without a color or size role — {uncategorizedTags.slice(0, 6).map(t => `#${t}`).join(", ")}{uncategorizedTags.length > 6 ? `, +${uncategorizedTags.length - 6} more` : ""}
+              <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#B85400", margin: "0 0 8px", lineHeight: 1.5 }}>
+                <strong>{uncategorizedTags.length}</strong> tag{uncategorizedTags.length === 1 ? "" : "s"} still without a color or size role — tap to make it a brand
               </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {uncategorizedTags.map(tag => (
+                  <div key={tag} onClick={() => makeBrand(tag)}
+                    title="Click to assign a brand color"
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", background: T.bgCard, border: "1px dashed #FF6B0066", borderRadius: "999px", cursor: "pointer", transition: "background 0.12s,border-color 0.12s" }}>
+                    <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#B85400" }}>#{tag}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>
