@@ -1,5 +1,5 @@
 # CanVault — Claude Context File
-Last updated: June 19, 2026
+Last updated: June 19, 2026 (grid spacing tightened)
 
 Live: canvault.vercel.app | Repo: github.com/tondatonc/canvoult
 
@@ -560,4 +560,13 @@ Bebas Neue is an all-caps display face — it has no real lowercase glyphs, so a
 
 ### Tag filter panel — Size tags now sort above Other tags
 In both tag-filter panels (main Collection page filter bar and the Wishlist page filter bar — these are two separately-coded but structurally identical blocks in `App.jsx`), section render order was Brand → Other → Size. Reordered to **Brand → Size → Other** in both places. No logic changes — `sizeTagsAll`/`brandTagsAll`/`otherTagsAll` derivation (around `tagRoles[t] === "size"` checks) is unchanged, this was purely a JSX reordering of three existing conditional blocks per panel.
+
+## Session: June 2026 — Tighter grid card spacing
+
+### Grid gap reduced (grid2/grid3 and grid5)
+Tonda wanted cards packed more closely together with just a little breathing room, across the main Collection grid and the Wishlist grid (both share the same `gridTemplateColumns`/`gap` line, ~line 1992 and ~line 2291 in `App.jsx`).
+- Was: `gap: viewMode === "grid5" ? 6 : 10`
+- Now: `gap: viewMode === "grid5" ? 3 : 5`
+- Applies to grid2/grid3 (gap 10→5) and grid5 (gap 6→3). Tile view is unaffected (separate render branch, not part of this grid container). Column counts/`minmax` floors in `gridColumnsFor()` untouched — only spacing between cells changed.
+
 
