@@ -1989,7 +1989,7 @@ function CollectionPage({ T, L, isAdmin }) {
           {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 6 : 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 3 : 5 }}>
           {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid5"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
@@ -2288,7 +2288,7 @@ function WishlistPage({ T, L, isAdmin }) {
           {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 6 : 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 3 : 5 }}>
           {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid5"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       )}
