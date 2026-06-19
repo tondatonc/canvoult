@@ -570,3 +570,13 @@ Tonda wanted cards packed more closely together with just a little breathing roo
 - Applies to grid2/grid3 (gap 10→5) and grid5 (gap 6→3). Tile view is unaffected (separate render branch, not part of this grid container). Column counts/`minmax` floors in `gridColumnsFor()` untouched — only spacing between cells changed.
 
 
+
+
+## Session: June 2026 — One-click "make brand" for uncategorized tags
+
+### Tag Studio: tap an uncategorized tag to instantly color it
+In `TagColorModal` (Colors tab), the "verification summary" box that lists tags lacking a color or size role used to just print plain text (`#tag1, #tag2, +N more`). Tonda pointed out manually assigning hex colors per tag is tedious busywork for tags where the specific color doesn't matter.
+- Added `makeBrand(tag)` function (next to `updateColor`/`removeColor`, ~line 1592): assigns a tag a color from the `PRESETS` array, preferring a preset not already in use by any existing custom or built-in brand color (falls back to a random pick from the full `PRESETS` list if all 12 are taken). Picked via `Math.random()` — no fixed default color, no color-picker pause.
+- The uncategorized-tags warning box now renders each tag as a clickable dashed-border chip (`onClick={() => makeBrand(tag)}`) instead of static comma-joined text. Clicking moves the tag into "YOUR BRANDS" immediately (it now has a `colors[tag]` entry so it qualifies via `coloredTags`), where it can be re-colored normally via the existing swatch/hex picker like any other custom brand tag.
+- No new persistence layer — `makeBrand` writes into the same `colors` state that already gets saved via `saveCustomColors(colors)` on the modal's SAVE button, so behavior is consistent with manually adding a color.
+- Decision: random preset color on click (not a fixed default, not auto-opening the picker) — Tonda confirmed this in-session since exact color rarely matters and it can always be changed after.
