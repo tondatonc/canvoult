@@ -155,6 +155,28 @@ export async function unpinItem(id, type = "can") {
   );
 }
 
+// ─── TAG META (custom colors + size/role tags) ───────────────────────────────
+// Table: tag_meta (id text primary key, colors jsonb, roles jsonb)
+// Single row keyed id='global' — shared across all devices/sessions so tag
+// colors and "size" role assignments made in Tag Studio show up for every
+// visitor (including signed-out mobile users), not just the device that set them.
+
+export async function getTagMeta() {
+  const rows = await request(`${base("tag_meta")}?id=eq.global&select=colors,roles`, {
+    headers: headers(),
+  });
+  if (!rows || rows.length === 0) return { colors: {}, roles: {} };
+  return { colors: rows[0].colors || {}, roles: rows[0].roles || {} };
+}
+
+export async function saveTagMeta({ colors, roles }) {
+  return request(base("tag_meta"), {
+    method: "POST",
+    headers: headers({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+    body: JSON.stringify({ id: "global", colors: colors || {}, roles: roles || {} }),
+  });
+}
+
 // ─── ROW CONVERTERS ───────────────────────────────────────────────────────────
 
 export const rowToCan = r => ({
