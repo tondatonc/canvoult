@@ -580,3 +580,22 @@ In `TagColorModal` (Colors tab), the "verification summary" box that lists tags 
 - The uncategorized-tags warning box now renders each tag as a clickable dashed-border chip (`onClick={() => makeBrand(tag)}`) instead of static comma-joined text. Clicking moves the tag into "YOUR BRANDS" immediately (it now has a `colors[tag]` entry so it qualifies via `coloredTags`), where it can be re-colored normally via the existing swatch/hex picker like any other custom brand tag.
 - No new persistence layer — `makeBrand` writes into the same `colors` state that already gets saved via `saveCustomColors(colors)` on the modal's SAVE button, so behavior is consistent with manually adding a color.
 - Decision: random preset color on click (not a fixed default, not auto-opening the picker) — Tonda confirmed this in-session since exact color rarely matters and it can always be changed after.
+
+## Session: June 20, 2026 — Sort by size (asc/desc)
+
+### New sort options: Size ↑ / Size ↓
+Added size-based sorting to the shared `sortCans()` function and `SortBar` component, used identically by both Collection and Wishlist views (single shared function, no duplicated logic).
+
+- **`parseSizeMl(tag)`** (new helper, next to `parsePrice`, ~line 741): extracts a numeric volume from a size-tag string and normalizes to milliliters so cans/wishes with different units (`330ml`, `0.5l`, `33cl`, `12oz`, `12 fl oz`) sort correctly against each other on one numeric axis. Regex: `/([\d.]+)\s*(ml|cl|l|oz|fl\.?\s?oz)?/`, handles comma-decimals (`0,5l` → `.` normalized first) and is case-insensitive. Unit defaults to `ml` if no unit suffix is present. Conversions: `l`→×1000, `cl`→×10, `oz`/`fl oz`→×29.5735.
+- **`getSizeMl(can, tagRoles)`** (new helper): finds the can's tag where `tagRoles[tag] === "size"` (the existing size-tag-role mechanism from Tag Studio) and runs it through `parseSizeMl`. Returns `null` if the can has no size tag or it doesn't parse.
+- **`sortCans(cans, sort, tagRoles = {})`**: added a third parameter, `tagRoles` (defaults to `{}` so any other unconsidered call site won't break). Two new sort branches:
+  - `"size_asc"` — smallest size first
+  - `"size_desc"` — largest size first
+  - Cans with no parseable size tag sort to the end in both directions; ties (or two unparseable cans) fall back to `a.name.localeCompare(b.name)` for stable, predictable ordering.
+- **`SortBar`**: added `{ v: "size_asc", l: L.sortSizeAsc }` and `{ v: "size_desc", l: L.sortSizeDesc }` to the `sorts` array, positioned after Tag and before Price (Newest/Oldest/A-Z/Z-A/Brand/Tag/**Size↑/Size↓**/Price↑/Price↓/Countries).
+- **Call sites updated** to pass `tagRoles` (both already had it in scope as local state from `loadTagRoles()`):
+  - Collection view: `sortCans(baseFiltered.filter(...), sort, tagRoles)` (~line 1851)
+  - Wishlist view: `sortCans(wishFiltered.filter(...), sort, tagRoles)` (~line 2171)
+- **Translations**: added `sortSizeAsc`/`sortSizeDesc` to both Czech (`"Velikost ↑"` / `"Velikost ↓"`) and English (`"Size ↑"` / `"Size ↓"`) locale objects.
+- No new persistence, no schema change — relies entirely on the existing size-tag-role mechanism (a can's size is just whichever of its tags has `tagRoles[tag] === "size"` set in Tag Studio). Cans without a size tag assigned simply sort last under either size option.
+
