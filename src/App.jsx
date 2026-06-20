@@ -118,6 +118,23 @@ function saveTagRoles(roles) {
   localStorage.setItem("cv_tag_roles", JSON.stringify(roles));
 }
 
+// Date display format: dd/mm/yyyy everywhere a date is shown to the user.
+// (Native <input type="date"> pickers are unaffected — those follow browser/OS locale.)
+function fmtDate(ts) {
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+// Short form without year, for tight spaces like tile-card rows (e.g. "20/06")
+function fmtDateShort(ts) {
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}`;
+}
+
 // A brand tag must have a custom color assigned
 function isBrandTag(tag, customColors) {
   return !!customColors[tag];
@@ -654,6 +671,36 @@ function TagPill({ tag, active, onClick, onRemove, T, count }) {
   );
 }
 
+// "Other" tags section, collapsed by default once there are more than a
+// handful of tags. Keeps the filter panel compact on mobile (where wrapping
+// dozens of uncategorized tag pills could otherwise eat half the screen)
+// while still showing everything with one tap, and on any screen size.
+function CollapsibleOtherTags({ tags, activeTags, tagCounts, onToggleTag, T, label, collapseAt = 8, previewCount = 6 }) {
+  const [expanded, setExpanded] = useState(false);
+  if (tags.length === 0) return null;
+  const needsCollapse = tags.length > collapseAt;
+  const visible = (needsCollapse && !expanded) ? tags.slice(0, previewCount) : tags;
+  const hiddenCount = tags.length - visible.length;
+  return (
+    <div>
+      {label && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{label}</p>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+        {visible.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => onToggleTag(tag)} T={T} />)}
+        {needsCollapse && (
+          <span onClick={() => setExpanded(e => !e)} style={{
+            padding: "3px 10px", borderRadius: "999px", fontSize: 10,
+            fontFamily: "'Oswald',sans-serif", letterSpacing: "0.06em",
+            background: "transparent", color: T.textMuted,
+            border: `1.5px dashed ${T.border}`, cursor: "pointer", userSelect: "none",
+          }}>
+            {expanded ? "▲ show less" : `▼ +${hiddenCount} more`}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Grid modes in zoom order: grid5 → grid3 → grid2 → tile
 const GRID_MODES = ["grid5", "grid3", "grid2", "tile"];
 
@@ -825,9 +872,13 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const getTagSuggestions = (q) => {
     if (!q.trim()) return setTagSuggestions([]);
     const low = q.toLowerCase().replace(/\s+/g, "-");
-    setTagSuggestions(
-      allTags.filter(t => t.includes(low) && !tags.includes(t)).slice(0, 6)
-    );
+    const starts = [], contains = [];
+    for (const t of allTags) {
+      if (tags.includes(t)) continue;
+      if (t.startsWith(low)) starts.push(t);
+      else if (t.includes(low)) contains.push(t);
+    }
+    setTagSuggestions([...starts.sort(), ...contains.sort()].slice(0, 6));
   };
 
   const addTag = (raw) => {
@@ -1020,7 +1071,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 26, padding: "6px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
-          {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}`}
+          {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${fmtDate(can.addedAt)}`}
         </p>
         {resolvedCountries.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
@@ -1103,6 +1154,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
   const [sharedDate, setSharedDate] = useState("");
   const [cropIdx, setCropIdx] = useState(null); // index of item being manually recropped (only set on explicit click)
   const [perTagInput, setPerTagInput] = useState({}); // {idx: inputValue}
+  const [perTagSuggestions, setPerTagSuggestions] = useState({}); // {idx: [tag,...]}
   const [perItemDates, setPerItemDates] = useState({}); // {idx: {date,dateUnknown}}
   const fileRef = useRef();
 
@@ -1133,10 +1185,28 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
     });
   };
 
+  // Google-style ranking: tags starting with the query come first, then tags
+  // that merely contain it elsewhere — both alphabetical within their group.
+  const rankTagMatches = (q, exclude = []) => {
+    const low = q.toLowerCase();
+    const starts = [], contains = [];
+    for (const t of allTags) {
+      if (exclude.includes(t)) continue;
+      if (t.startsWith(low)) starts.push(t);
+      else if (t.includes(low)) contains.push(t);
+    }
+    return [...starts.sort(), ...contains.sort()].slice(0, 6);
+  };
+
   const getTagSuggestions = (q) => {
     if (!q.trim()) return setTagSuggestions([]);
-    const low = q.toLowerCase();
-    setTagSuggestions(allTags.filter(t => t.includes(low) && !sharedTags.includes(t)).slice(0, 6));
+    setTagSuggestions(rankTagMatches(q, sharedTags));
+  };
+
+  const getItemTagSuggestions = (i, q) => {
+    if (!q.trim()) return setPerTagSuggestions(p => ({ ...p, [i]: [] }));
+    const item = queue[i];
+    setPerTagSuggestions(p => ({ ...p, [i]: rankTagMatches(q, item ? item.tags : []) }));
   };
 
   const addSharedTag = (val) => {
@@ -1148,11 +1218,12 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
     setTagInput(""); setTagSuggestions([]);
   };
 
-  const addItemTag = (i) => {
-    const raw = (perTagInput[i] || "").trim().toLowerCase().replace(/\s+/g, "-");
+  const addItemTag = (i, val) => {
+    const raw = (val !== undefined ? val : (perTagInput[i] || "")).trim().toLowerCase().replace(/\s+/g, "-");
     if (!raw) return;
     setQueue(q => q.map((item, idx) => idx === i && !item.tags.includes(raw) ? { ...item, tags: [...item.tags, raw] } : item));
     setPerTagInput(p => ({ ...p, [i]: "" }));
+    setPerTagSuggestions(p => ({ ...p, [i]: [] }));
   };
 
   const updateItem = (i, patch) => setQueue(q => q.map((item, idx) => idx === i ? { ...item, ...patch } : item));
@@ -1327,15 +1398,34 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
                     />
                     {/* Per-item tags */}
                     {!item.done && (
-                      <div style={{ display: "flex", gap: 5, marginBottom: 5 }}>
-                        <input
-                          value={perTagInput[i] || ""}
-                          onChange={e => setPerTagInput(p => ({ ...p, [i]: e.target.value }))}
-                          onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addItemTag(i))}
-                          placeholder="add tag…"
-                          style={{ flex: 1, padding: "4px 8px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 6, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }}
-                        />
-                        <button onClick={() => addItemTag(i)} style={{ background: "#C8102E", border: "none", borderRadius: 6, padding: "0 10px", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>+</button>
+                      <div style={{ position: "relative", marginBottom: 5 }}>
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <input
+                            value={perTagInput[i] || ""}
+                            onChange={e => { setPerTagInput(p => ({ ...p, [i]: e.target.value })); getItemTagSuggestions(i, e.target.value); }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addItemTag(i); }
+                              if (e.key === "Escape") setPerTagSuggestions(p => ({ ...p, [i]: [] }));
+                              if (e.key === "ArrowDown" && (perTagSuggestions[i] || []).length > 0) { e.preventDefault(); addItemTag(i, perTagSuggestions[i][0]); }
+                            }}
+                            onBlur={() => setTimeout(() => setPerTagSuggestions(p => ({ ...p, [i]: [] })), 150)}
+                            placeholder="add tag…"
+                            style={{ flex: 1, padding: "4px 8px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 6, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }}
+                          />
+                          <button onClick={() => addItemTag(i)} style={{ background: "#C8102E", border: "none", borderRadius: 6, padding: "0 10px", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>+</button>
+                        </div>
+                        {(perTagSuggestions[i] || []).length > 0 && (
+                          <div style={{ position: "absolute", top: "100%", left: 0, right: 30, background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, zIndex: 50, overflow: "hidden", boxShadow: "0 6px 18px #00000044", marginTop: 2 }}>
+                            {perTagSuggestions[i].map(t => (
+                              <div key={t} onMouseDown={() => addItemTag(i, t)}
+                                style={{ padding: "5px 9px", cursor: "pointer", fontFamily: "Georgia,serif", fontSize: 11, color: T.text, borderBottom: `1px solid ${T.border}` }}
+                                onMouseEnter={e => e.currentTarget.style.background = "#C8102E22"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                #{t}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 5 }}>
@@ -1413,6 +1503,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
 function BulkTagModal({ T, cans, onSave, onClose }) {
   const [selected, setSelected] = useState(new Set());
   const [tagInput, setTagInput] = useState("");
+  const [tagSuggestions, setTagSuggestions] = useState([]);
   const [applyTags, setApplyTags] = useState([]);
   const [removeTags, setRemoveTags] = useState([]);
   const [applyCountries, setApplyCountries] = useState([]);
@@ -1439,10 +1530,23 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
     });
   };
 
-  const addApplyTag = () => {
-    const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+  // Google-style ranking: prefix matches first, then anywhere-matches, both alphabetical.
+  const getTagSuggestions = (q) => {
+    if (!q.trim()) return setTagSuggestions([]);
+    const low = q.toLowerCase();
+    const starts = [], contains = [];
+    for (const t of allTags) {
+      if (applyTags.includes(t)) continue;
+      if (t.startsWith(low)) starts.push(t);
+      else if (t.includes(low)) contains.push(t);
+    }
+    setTagSuggestions([...starts.sort(), ...contains.sort()].slice(0, 6));
+  };
+
+  const addApplyTag = (val) => {
+    const t = (val !== undefined ? val : tagInput).trim().toLowerCase().replace(/\s+/g, "-");
     if (t && !applyTags.includes(t)) setApplyTags(p => [...p, t]);
-    setTagInput("");
+    setTagInput(""); setTagSuggestions([]);
   };
 
   const toggleFilterTag = (t) => setFilterTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
@@ -1484,12 +1588,32 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
           {/* Tags to add */}
           <div style={{ marginBottom: 10, padding: "10px 12px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: "#22C55E", letterSpacing: "0.2em", marginBottom: 6 }}>+ TAGS TO ADD</p>
-            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              <input value={tagInput} onChange={e => setTagInput(e.target.value)}
-                onKeyDown={e => (e.key === "Enter" || e.key === ",") && (e.preventDefault(), addApplyTag())}
-                placeholder="tag to add to selected cans…"
-                style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
-              <button onClick={addApplyTag} style={{ background: "#22C55E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+            <div style={{ position: "relative", marginBottom: 6 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input value={tagInput}
+                  onChange={e => { setTagInput(e.target.value); getTagSuggestions(e.target.value); }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addApplyTag(); }
+                    if (e.key === "Escape") setTagSuggestions([]);
+                    if (e.key === "ArrowDown" && tagSuggestions.length > 0) { e.preventDefault(); addApplyTag(tagSuggestions[0]); }
+                  }}
+                  onBlur={() => setTimeout(() => setTagSuggestions([]), 150)}
+                  placeholder="tag to add to selected cans…"
+                  style={{ flex: 1, padding: "7px 10px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }} />
+                <button onClick={() => addApplyTag()} style={{ background: "#22C55E", border: "none", borderRadius: 7, padding: "0 12px", color: "#fff", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>+</button>
+              </div>
+              {tagSuggestions.length > 0 && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 42, background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 8, zIndex: 50, overflow: "hidden", boxShadow: "0 8px 24px #00000044" }}>
+                  {tagSuggestions.map(t => (
+                    <div key={t} onMouseDown={() => addApplyTag(t)}
+                      style={{ padding: "7px 12px", cursor: "pointer", fontFamily: "Georgia,serif", fontSize: 12, color: T.text, borderBottom: `1px solid ${T.border}` }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#22C55E22"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      #{t}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {applyTags.map(t => <TagPill key={t} tag={t} active T={T} onRemove={() => setApplyTags(p => p.filter(x => x !== t))} />)}
@@ -1583,13 +1707,13 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
 
 // ─── TAG COLOR MODAL ──────────────────────────────────────────────────────────
 
-function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
+function TagColorModal({ T, allTags, customColors, tagRoles: initialTagRoles, onSave, onClose }) {
   const [colors, setColors] = useState({ ...customColors });
   const [newTag, setNewTag] = useState("");
   const [newColor, setNewColor] = useState("#C8102E");
   const [newHex, setNewHex] = useState("#C8102E");
   const [editHex, setEditHex] = useState({});
-  const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
+  const [tagRoles, setTagRoles] = useState(() => initialTagRoles || loadTagRoles());
   const [tab, setTab] = useState("colors"); // "colors" | "roles"
   const PRESETS = ["#C8102E","#FF6B00","#FFCC00","#22C55E","#00843D","#3B82F6","#004B93","#8B5CF6","#EC4899","#14B8A6","#F97316","#888888"];
   const isValidHex = h => /^#[0-9A-Fa-f]{6}$/.test(h);
@@ -1768,7 +1892,7 @@ function TagColorModal({ T, allTags, customColors, onSave, onClose }) {
         </div>
       )}
 
-      <button onClick={() => { saveCustomColors(colors); saveTagRoles(tagRoles); onSave(colors); onClose(); }} style={{ width: "100%", marginTop: 18, padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E33" }}>
+      <button onClick={() => { saveCustomColors(colors); saveTagRoles(tagRoles); db.saveTagMeta({ colors, roles: tagRoles }).catch(() => {}); onSave(colors, tagRoles); onClose(); }} style={{ width: "100%", marginTop: 18, padding: "13px", background: "#C8102E", border: "none", borderRadius: 11, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: "0.15em", cursor: "pointer", boxShadow: "0 4px 16px #C8102E33" }}>
         SAVE
       </button>
     </ModalShell>
@@ -1844,6 +1968,16 @@ function CollectionPage({ T, L, isAdmin }) {
       db.getPinned().then(pinnedRows => {
         setPinned(pinnedRows.filter(r => r.type === "can").map(r => r.can_id));
       }).catch(() => {});
+      // Load tag colors/roles from Supabase — non-fatal if table doesn't exist yet.
+      // This is what makes Brand/Size tag sections show up for EVERY visitor
+      // (including signed-out users on a fresh device), not just the browser
+      // that originally set them up in Tag Studio via localStorage.
+      db.getTagMeta().then(meta => {
+        setCustomColors(meta.colors);
+        setTagRoles(meta.roles);
+        saveCustomColors(meta.colors);
+        saveTagRoles(meta.roles);
+      }).catch(() => {});
     }).catch(err => {
       console.error("CanVault: failed to load cans from Supabase —", err);
       setLoadError(err.message || String(err));
@@ -1854,7 +1988,7 @@ function CollectionPage({ T, L, isAdmin }) {
   const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const [tagSortMode, setTagSortMode] = useState("alpha"); // "alpha" | "count"
   const [tagSearch, setTagSearch] = useState("");
-  const [tagRoles] = useState(() => loadTagRoles());
+  const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
   const allTagsRaw = [...new Set(cans.flatMap(c => c.tags))];
   const allTagsSorted = tagSortMode === "count"
     ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
@@ -1991,12 +2125,14 @@ function CollectionPage({ T, L, isAdmin }) {
           )}
 
           {allTags.length > 0 && (
-            <div>
-              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-              </div>
-            </div>
+            <CollapsibleOtherTags
+              tags={allTags}
+              activeTags={activeTags}
+              tagCounts={tagCounts}
+              onToggleTag={tag => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])}
+              T={T}
+              label={(brandTags.length > 0 || sizeTags.length > 0) ? (L.otherTagsLabel || "OTHER") : null}
+            />
           )}
         </div>
       )}
@@ -2045,10 +2181,10 @@ function CollectionPage({ T, L, isAdmin }) {
       </div>
 
       {/* Modals */}
-      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTags} />}
-      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTags} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
+      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTagsRaw} />}
+      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTagsRaw} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
-      {modal === "colors" && <TagColorModal T={T} allTags={allTags} customColors={customColors} onSave={setCustomColors} onClose={() => setModal(null)} />}
+      {modal === "colors" && <TagColorModal T={T} allTags={allTagsRaw} customColors={customColors} tagRoles={tagRoles} onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
           onDelete={id => { removeCan(id); setModal(null); }}
@@ -2061,7 +2197,7 @@ function CollectionPage({ T, L, isAdmin }) {
           onClose={() => setModal(null)} />
       )}
       {modal?.can && modal.edit && (
-        <AddEditModal T={T} initial={modal.can} onSave={saveCan} onClose={() => setModal(null)} allTags={allTags} />
+        <AddEditModal T={T} initial={modal.can} onSave={saveCan} onClose={() => setModal(null)} allTags={allTagsRaw} />
       )}
       </>}
     </div>
@@ -2115,7 +2251,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
         </div>
       </div>
       <div style={{ color: T.textFaint, fontSize: 10, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", flexShrink: 0 }}>
-        {can.dateUnknown ? "?" : new Date(can.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+        {can.dateUnknown ? "?" : fmtDateShort(can.addedAt)}
       </div>
       <div style={{ color: T.border, fontSize: 16 }}>›</div>
     </div>
@@ -2168,6 +2304,15 @@ function WishlistPage({ T, L, isAdmin }) {
       db.getPinned().then(pinnedRows => {
         setPinnedWishes(pinnedRows.filter(r => r.type === "wish").map(r => r.can_id));
       }).catch(() => {});
+      // Load tag colors/roles from Supabase — non-fatal if table doesn't exist yet.
+      // Same fix as CollectionPage: keeps Brand/Size tag sections in sync across
+      // every device/browser instead of relying on this device's localStorage.
+      db.getTagMeta().then(meta => {
+        setCustomColors(meta.colors);
+        setTagRoles(meta.roles);
+        saveCustomColors(meta.colors);
+        saveTagRoles(meta.roles);
+      }).catch(() => {});
     }).catch(err => {
       console.error("CanVault: failed to load wishlist from Supabase —", err);
       setLoadError(err.message || String(err));
@@ -2176,8 +2321,8 @@ function WishlistPage({ T, L, isAdmin }) {
   }, []);
 
   const [tagSearch, setTagSearch] = useState("");
-  const [tagRoles] = useState(() => loadTagRoles());
-  const [customColors] = useState(() => loadCustomColors());
+  const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
+  const [customColors, setCustomColors] = useState(() => loadCustomColors());
   const allTagsRaw = [...new Set(wishes.flatMap(w => w.tags))].sort();
   const tagCounts = wishes.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
@@ -2270,12 +2415,14 @@ function WishlistPage({ T, L, isAdmin }) {
           )}
 
           {allTags.length > 0 && (
-            <div>
-              {(brandTags.length > 0 || sizeTags.length > 0) && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.otherTagsLabel || "OTHER"}</p>}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {allTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-              </div>
-            </div>
+            <CollapsibleOtherTags
+              tags={allTags}
+              activeTags={activeTags}
+              tagCounts={tagCounts}
+              onToggleTag={tag => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])}
+              T={T}
+              label={(brandTags.length > 0 || sizeTags.length > 0) ? (L.otherTagsLabel || "OTHER") : null}
+            />
           )}
         </div>
       )}
@@ -2344,7 +2491,7 @@ function WishlistPage({ T, L, isAdmin }) {
       </div>
       )}
 
-      {modal === "add" && <AddEditModal T={T} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTags} />}
+      {modal === "add" && <AddEditModal T={T} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />}
       {modal?.wish && !modal.edit && (
         <WishDetailModal T={T} wish={modal.wish} isAdmin={isAdmin}
           onDelete={id => { removeWish(id); setModal(null); }}
@@ -2362,7 +2509,7 @@ function WishlistPage({ T, L, isAdmin }) {
           onClose={() => setModal(null)} />
       )}
       {modal?.wish && modal.edit && (
-        <AddEditModal T={T} initial={modal.wish} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTags} />
+        <AddEditModal T={T} initial={modal.wish} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />
       )}
       </>}
     </div>
@@ -2638,7 +2785,7 @@ function CanWallPage({ T, L, isAdmin }) {
                 <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     {photo.caption && <div style={{ fontFamily: "Georgia,serif", fontStyle: "italic", fontSize: 13, color: T.text, marginBottom: 2 }}>{photo.caption}</div>}
-                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{new Date(photo.addedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
+                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>{fmtDate(photo.addedAt)}</div>
                   </div>
                   {isAdmin && (
                     <button onClick={e => { e.stopPropagation(); removePhoto(photo.id); }} style={{ background: "none", border: "none", color: "#C8102E66", fontSize: 18, cursor: "pointer", padding: 4 }}>🗑</button>
@@ -2902,6 +3049,7 @@ function StatsPage({ T, L, isAdmin }) {
   const [wishes, setWishes] = useState([]);
   const [wallPhotos, setWallPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [customColors, setCustomColors] = useState(() => loadCustomColors());
 
   useEffect(() => {
     const loadData = async () => {
@@ -2916,6 +3064,8 @@ function StatsPage({ T, L, isAdmin }) {
         setWallPhotos(db.isConfigured() ? wp.map(db.rowToPhoto) : []);
       } catch { setCans(SAMPLE_CANS); setWishes(SAMPLE_WISHLIST); setWallPhotos([]); }
       setLoading(false);
+      // Non-fatal — keeps the brand breakdown chart's colors in sync with Tag Studio across devices.
+      if (db.isConfigured()) db.getTagMeta().then(meta => setCustomColors(meta.colors)).catch(() => {});
     };
     loadData();
   }, []);
@@ -2924,7 +3074,6 @@ function StatsPage({ T, L, isAdmin }) {
 
   const tagCounts = cans.reduce((acc, c) => { c.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  const customColors = loadCustomColors();
   const brandTags = [...new Set([
     ...Object.keys(BRAND_COLORS).filter(b => b !== "default"),
     ...Object.keys(customColors),
@@ -2966,8 +3115,8 @@ function StatsPage({ T, L, isAdmin }) {
         <Stat label="ON WISHLIST" value={wishes.length} />
         <Stat label="UNIQUE TAGS" value={Object.keys(tagCounts).length} />
         <Stat label="BRANDS" value={brandCounts.length} />
-        <Stat label="NEWEST" value="📅" sub={cans.length ? new Date(Math.max(...cans.map(c => c.addedAt))).toLocaleDateString("en-GB",{day:"numeric",month:"short"}) : "—"} />
-        <Stat label="OLDEST" value="🗄️" sub={cans.length ? new Date(Math.min(...cans.map(c => c.addedAt))).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—"} />
+        <Stat label="NEWEST" value="📅" sub={cans.length ? fmtDateShort(Math.max(...cans.map(c => c.addedAt))) : "—"} />
+        <Stat label="OLDEST" value="🗄️" sub={cans.length ? fmtDate(Math.min(...cans.map(c => c.addedAt))) : "—"} />
       </div>
 
       {/* Growth chart */}
@@ -3032,12 +3181,11 @@ function StatsPage({ T, L, isAdmin }) {
           return d.getMonth() === thisMonth && d.getDate() === thisDay && d.getFullYear() !== now.getFullYear();
         });
         if (onThisDay.length === 0) return null;
-        const customColors = loadCustomColors();
         return (
           <div style={{ background: T.bgCard, border: `2px solid #C8102E44`, borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.2em", marginBottom: 4 }}>📅 ON THIS DAY</p>
             <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textMuted, fontStyle: "italic", marginBottom: 12 }}>
-              You added {onThisDay.length} can{onThisDay.length !== 1 ? "s" : ""} on {now.toLocaleDateString("en-GB", { day: "numeric", month: "long" })} in past years
+              You added {onThisDay.length} can{onThisDay.length !== 1 ? "s" : ""} on {fmtDateShort(now.getTime())} in past years
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {onThisDay.map(c => {
