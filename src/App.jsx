@@ -687,6 +687,8 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     { v: "za", l: L.sortZA },
     { v: "brand", l: L.sortBrand },
     { v: "tag", l: L.sortTag },
+    { v: "size_asc", l: L.sortSizeAsc },
+    { v: "size_desc", l: L.sortSizeDesc },
     { v: "price_asc", l: L.sortPriceAsc },
     { v: "price_desc", l: L.sortPriceDesc },
     { v: "countries", l: L.sortCountries },
@@ -743,7 +745,23 @@ function parsePrice(p) {
   const n = parseFloat(String(p).replace(/[^0-9.,]/g, "").replace(",", "."));
   return isNaN(n) ? null : n;
 }
-function sortCans(cans, sort) {
+function parseSizeMl(tag) {
+  if (!tag) return null;
+  const m = String(tag).toLowerCase().replace(",", ".").match(/([\d.]+)\s*(ml|cl|l|oz|fl\.?\s?oz)?/);
+  if (!m || !m[1]) return null;
+  const n = parseFloat(m[1]);
+  if (isNaN(n)) return null;
+  const unit = (m[2] || "ml").replace(/\./g, "").replace(/\s/g, "");
+  if (unit === "l") return n * 1000;
+  if (unit === "cl") return n * 10;
+  if (unit === "oz" || unit === "floz") return n * 29.5735;
+  return n; // ml (default)
+}
+function getSizeMl(can, tagRoles) {
+  const sizeTag = (can.tags || []).find(t => tagRoles[t] === "size");
+  return sizeTag ? parseSizeMl(sizeTag) : null;
+}
+function sortCans(cans, sort, tagRoles = {}) {
   return [...cans].sort((a, b) => {
     if (sort === "newest") return b.addedAt - a.addedAt;
     if (sort === "oldest") return a.addedAt - b.addedAt;
@@ -762,6 +780,18 @@ function sortCans(cans, sort) {
       if (pa === null && pb === null) return 0;
       if (pa === null) return 1; if (pb === null) return -1;
       return pb - pa;
+    }
+    if (sort === "size_asc") {
+      const sa = getSizeMl(a, tagRoles), sb = getSizeMl(b, tagRoles);
+      if (sa === null && sb === null) return a.name.localeCompare(b.name);
+      if (sa === null) return 1; if (sb === null) return -1;
+      return sa - sb || a.name.localeCompare(b.name);
+    }
+    if (sort === "size_desc") {
+      const sa = getSizeMl(a, tagRoles), sb = getSizeMl(b, tagRoles);
+      if (sa === null && sb === null) return a.name.localeCompare(b.name);
+      if (sa === null) return 1; if (sb === null) return -1;
+      return sb - sa || a.name.localeCompare(b.name);
     }
     if (sort === "countries") return (b.countries || []).length - (a.countries || []).length;
     return 0;
@@ -1848,7 +1878,7 @@ function CollectionPage({ T, L, isAdmin }) {
   });
 
   // Pinned cans always first
-  const filtered = sortCans(baseFiltered.filter(c => !pinned.includes(c.id)), sort);
+  const filtered = sortCans(baseFiltered.filter(c => !pinned.includes(c.id)), sort, tagRoles);
   const pinnedCans = baseFiltered.filter(c => pinned.includes(c.id));
   const allFiltered = [...pinnedCans, ...filtered];
 
@@ -2168,7 +2198,7 @@ function WishlistPage({ T, L, isAdmin }) {
   });
   const sorted = [
     ...wishFiltered.filter(w => pinnedWishes.includes(w.id)),
-    ...sortCans(wishFiltered.filter(w => !pinnedWishes.includes(w.id)), sort),
+    ...sortCans(wishFiltered.filter(w => !pinnedWishes.includes(w.id)), sort, tagRoles),
   ];
 
   const saveWish = async w => {
@@ -3273,7 +3303,7 @@ export default function App() {
     loading: "NAČÍTÁNÍ…",
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
-    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
+    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortSizeAsc: "Velikost ↑", sortSizeDesc: "Velikost ↓", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
     searchTags: "hledat štítky…", sizeTags: "VELIKOST", brandTagsLabel: "ZNAČKA", otherTagsLabel: "OSTATNÍ",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
@@ -3308,7 +3338,7 @@ export default function App() {
     loading: "LOADING…",
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
-    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
+    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortSizeAsc: "Size ↑", sortSizeDesc: "Size ↓", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
     searchTags: "search tags…", sizeTags: "SIZE", brandTagsLabel: "BRAND", otherTagsLabel: "OTHER",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
