@@ -736,8 +736,6 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     { v: "tag", l: L.sortTag },
     { v: "size_asc", l: L.sortSizeAsc },
     { v: "size_desc", l: L.sortSizeDesc },
-    { v: "price_asc", l: L.sortPriceAsc },
-    { v: "price_desc", l: L.sortPriceDesc },
     { v: "countries", l: L.sortCountries },
   ];
 
@@ -787,11 +785,6 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
 function extractBrand(name) {
   return (name || "").trim().split(/\s+/)[0].toLowerCase();
 }
-function parsePrice(p) {
-  if (!p) return null;
-  const n = parseFloat(String(p).replace(/[^0-9.,]/g, "").replace(",", "."));
-  return isNaN(n) ? null : n;
-}
 function parseSizeMl(tag) {
   if (!tag) return null;
   const m = String(tag).toLowerCase().replace(",", ".").match(/([\d.]+)\s*(ml|cl|l|oz|fl\.?\s?oz)?/);
@@ -816,18 +809,6 @@ function sortCans(cans, sort, tagRoles = {}) {
     if (sort === "za") return b.name.localeCompare(a.name);
     if (sort === "brand") return extractBrand(a.name).localeCompare(extractBrand(b.name));
     if (sort === "tag") { const ta = (a.tags[0] || ""); const tb = (b.tags[0] || ""); return ta.localeCompare(tb) || a.name.localeCompare(b.name); }
-    if (sort === "price_asc") {
-      const pa = parsePrice(a.price), pb = parsePrice(b.price);
-      if (pa === null && pb === null) return 0;
-      if (pa === null) return 1; if (pb === null) return -1;
-      return pa - pb;
-    }
-    if (sort === "price_desc") {
-      const pa = parsePrice(a.price), pb = parsePrice(b.price);
-      if (pa === null && pb === null) return 0;
-      if (pa === null) return 1; if (pb === null) return -1;
-      return pb - pa;
-    }
     if (sort === "size_asc") {
       const sa = getSizeMl(a, tagRoles), sb = getSizeMl(b, tagRoles);
       if (sa === null && sb === null) return a.name.localeCompare(b.name);
@@ -853,7 +834,6 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [tags, setTags] = useState(initial.tags || []);
   const [image, setImage] = useState(initial.image || null);
   const [note, setNote] = useState(initial.note || "");
-  const [price, setPrice] = useState(initial.price || "");
   const [countries, setCountries] = useState(initial.countries || []);
   const [drag, setDrag] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -974,12 +954,6 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
           style={{ width: "100%", padding: "10px 13px", marginBottom: 12, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
       </>}
 
-      {extraFields.includes("price") && <>
-        <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>PRICE (optional)</label>
-        <input value={price} onChange={e => setPrice(e.target.value)} placeholder="e.g. €1.50 or $2"
-          style={{ width: "100%", padding: "10px 13px", marginBottom: 12, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
-      </>}
-
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>COUNTRIES (optional)</label>
       <div style={{ marginBottom: 12 }}>
         <CountryInput value={countries} onChange={setCountries} T={T} />
@@ -1024,7 +998,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
         </label>
       </div>
 
-      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, price, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
+      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
         disabled={!name.trim()}
         style={{ width: "100%", padding: "13px", background: name.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: name.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: name.trim() ? "pointer" : "not-allowed", boxShadow: name.trim() ? "0 4px 16px #C8102E44" : "none", transition: "all 0.2s" }}>
         {initial.id ? "SAVE CHANGES" : "ADD TO VAULT"}
@@ -1082,7 +1056,6 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
             ))}
           </div>
         )}
-        {can.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 11, letterSpacing: "0.1em", marginBottom: 8 }}>💰 {can.price}</p>}
         {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", marginBottom: 12, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginBottom: 18 }}>
           {can.tags.map(t => <TagPill key={t} tag={t} T={T} />)}
@@ -2491,7 +2464,7 @@ function WishlistPage({ T, L, isAdmin }) {
       </div>
       )}
 
-      {modal === "add" && <AddEditModal T={T} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />}
+      {modal === "add" && <AddEditModal T={T} extraFields={["note"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />}
       {modal?.wish && !modal.edit && (
         <WishDetailModal T={T} wish={modal.wish} isAdmin={isAdmin}
           onDelete={id => { removeWish(id); setModal(null); }}
@@ -2501,7 +2474,7 @@ function WishlistPage({ T, L, isAdmin }) {
             setWishes(p => p.map(w => w.id === updated.id ? updated : w));
           }}
           onMarkFound={async (wish) => {
-            const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, countries: wish.countries || [], price: "", addedAt: Date.now() };
+            const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, countries: wish.countries || [], addedAt: Date.now() };
             if (db.isConfigured()) await db.upsertCan(newCan).catch(console.error);
             removeWish(wish.id);
             setModal(null);
@@ -2509,7 +2482,7 @@ function WishlistPage({ T, L, isAdmin }) {
           onClose={() => setModal(null)} />
       )}
       {modal?.wish && modal.edit && (
-        <AddEditModal T={T} initial={modal.wish} extraFields={["note","price"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />
+        <AddEditModal T={T} initial={modal.wish} extraFields={["note"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />
       )}
       </>}
     </div>
@@ -2609,7 +2582,6 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
           {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 10 }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 24, padding: "6px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
-        {wish.price && <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textMuted, fontSize: 12, letterSpacing: "0.1em", margin: "6px 0" }}>💰 {wish.price}</p>}
         {resolvedCountries.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
             {resolvedCountries.map((rc, i) => (
@@ -3439,7 +3411,7 @@ export default function App() {
     linkCopied: "✅ Odkaz zkopírován!",
     addCanTitle: "Přidat plechovku", editCanTitle: "Upravit",
     saveChanges: "ULOŽIT ZMĚNY", addToVault: "PŘIDAT DO SBÍRKY",
-    canName: "NÁZEV PLECHOVKY", tags: "ŠTÍTKY", note: "POZNÁMKA", price: "CENA", countries: "ZEMĚ",
+    canName: "NÁZEV PLECHOVKY", tags: "ŠTÍTKY", note: "POZNÁMKA", countries: "ZEMĚ",
     tapToUpload: "Klepni pro nahrání fotky", changeRecrop: "✂️ ZMĚNIT A OŘÍZNOUT",
     addWishTitle: "Přidat přání", canWallSub: "FOTKY POLICE A STĚNY",
     addPhoto: "+ Přidat foto", uploadFirst: "NAHRÁT PRVNÍ FOTO",
@@ -3451,7 +3423,7 @@ export default function App() {
     loading: "NAČÍTÁNÍ…",
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
-    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortSizeAsc: "Velikost ↑", sortSizeDesc: "Velikost ↓", sortPriceAsc: "Cena ↑", sortPriceDesc: "Cena ↓", sortCountries: "Země",
+    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortSizeAsc: "Velikost ↑", sortSizeDesc: "Velikost ↓", sortCountries: "Země",
     searchTags: "hledat štítky…", sizeTags: "VELIKOST", brandTagsLabel: "ZNAČKA", otherTagsLabel: "OSTATNÍ",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
@@ -3474,7 +3446,7 @@ export default function App() {
     linkCopied: "✅ Link copied!",
     addCanTitle: "Add a Can", editCanTitle: "Edit",
     saveChanges: "SAVE CHANGES", addToVault: "ADD TO VAULT",
-    canName: "CAN NAME", tags: "TAGS", note: "NOTE", price: "PRICE", countries: "COUNTRIES",
+    canName: "CAN NAME", tags: "TAGS", note: "NOTE", countries: "COUNTRIES",
     tapToUpload: "TAP TO UPLOAD PHOTO", changeRecrop: "✂️ CHANGE & RE-CROP",
     addWishTitle: "Add a Wish", canWallSub: "SHELF & WALL PHOTOS",
     addPhoto: "+ Add Photo", uploadFirst: "UPLOAD FIRST PHOTO",
@@ -3486,7 +3458,7 @@ export default function App() {
     loading: "LOADING…",
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
-    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortSizeAsc: "Size ↑", sortSizeDesc: "Size ↓", sortPriceAsc: "Price ↑", sortPriceDesc: "Price ↓", sortCountries: "Countries",
+    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortSizeAsc: "Size ↑", sortSizeDesc: "Size ↓", sortCountries: "Countries",
     searchTags: "search tags…", sizeTags: "SIZE", brandTagsLabel: "BRAND", otherTagsLabel: "OTHER",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
