@@ -46,6 +46,7 @@ export async function upsertCan(can) {
       countries: can.countries || [],
       added_at: new Date(can.addedAt).toISOString(),
       date_unknown: can.dateUnknown || false,
+      avg_color: can.avgColor || null,
     }),
   });
 }
@@ -77,6 +78,7 @@ export async function upsertWish(wish) {
       note: wish.note || null,
       countries: wish.countries || [],
       added_at: new Date(wish.addedAt).toISOString(),
+      avg_color: wish.avgColor || null,
     }),
   });
 }
@@ -186,6 +188,7 @@ export const rowToCan = r => ({
   countries: r.countries || [],
   addedAt: new Date(r.added_at).getTime(),
   dateUnknown: r.date_unknown || false,
+  avgColor: r.avg_color || null,
 });
 
 export const rowToWish = r => ({
@@ -196,6 +199,7 @@ export const rowToWish = r => ({
   note: r.note || "",
   countries: r.countries || [],
   addedAt: new Date(r.added_at).getTime(),
+  avgColor: r.avg_color || null,
 });
 
 export const rowToPhoto = r => ({
