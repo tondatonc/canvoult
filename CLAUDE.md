@@ -1,5 +1,5 @@
 # CanVault — Claude Context File
-Last updated: June 19, 2026 (grid spacing tightened)
+Last updated: June 20, 2026 (dd/mm/yyyy dates, tag autocomplete, Supabase-synced tag colors/roles, collapsible Other tags)
 
 Live: canvault.vercel.app | Repo: github.com/tondatonc/canvoult
 
@@ -92,6 +92,18 @@ wall_photos (
   image_url TEXT NOT NULL,
   caption TEXT,
   added_at TIMESTAMPTZ DEFAULT NOW()
+)
+
+pinned (
+  can_id TEXT NOT NULL,
+  type   TEXT NOT NULL DEFAULT 'can',  -- 'can' | 'wish'
+  PRIMARY KEY (can_id, type)
+)
+
+tag_meta (
+  id     TEXT PRIMARY KEY,   -- single row, id = 'global'
+  colors JSONB DEFAULT '{}', -- {tag: hexColor} — same shape as old cv_tag_colors localStorage blob
+  roles  JSONB DEFAULT '{}'  -- {tag: "size"} — same shape as old cv_tag_roles localStorage blob
 )
 ```
 
@@ -227,6 +239,27 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.wall_photos TO anon, authenticate
 -- Migrate single country → array
 UPDATE cans SET countries = ARRAY[country] WHERE country IS NOT NULL AND country != '' AND (countries IS NULL OR countries = '{}');
 UPDATE wishlist SET countries = ARRAY[country] WHERE country IS NOT NULL AND country != '' AND (countries IS NULL OR countries = '{}');
+
+-- tag_meta table (June 20, 2026) — MUST be run manually in Supabase SQL editor.
+-- Without this table, tag colors/size-roles fall back to localStorage-only behavior
+-- (works on the device that set them, but signed-out visitors on other devices won't
+-- see Brand/Size tag sections — this was the root cause of the "size tags missing on
+-- signed-out mobile" bug). The app fetches this non-fatally, same .catch(()=>{}) pattern
+-- as `pinned`, so nothing breaks if the table doesn't exist yet — it just won't sync.
+CREATE TABLE IF NOT EXISTS tag_meta (
+  id     TEXT PRIMARY KEY,
+  colors JSONB DEFAULT '{}',
+  roles  JSONB DEFAULT '{}'
+);
+ALTER TABLE tag_meta ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'tag_meta' AND policyname = 'allow_all'
+  ) THEN
+    CREATE POLICY "allow_all" ON tag_meta FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tag_meta TO anon, authenticated;
 ```
 
 ---
@@ -598,4 +631,50 @@ Added size-based sorting to the shared `sortCans()` function and `SortBar` compo
   - Wishlist view: `sortCans(wishFiltered.filter(...), sort, tagRoles)` (~line 2171)
 - **Translations**: added `sortSizeAsc`/`sortSizeDesc` to both Czech (`"Velikost ↑"` / `"Velikost ↓"`) and English (`"Size ↑"` / `"Size ↓"`) locale objects.
 - No new persistence, no schema change — relies entirely on the existing size-tag-role mechanism (a can's size is just whichever of its tags has `tagRoles[tag] === "size"` set in Tag Studio). Cans without a size tag assigned simply sort last under either size option.
+
+
+## Session: June 20, 2026 — dd/mm/yyyy dates, bulk tag autocomplete, tag-meta moved to Supabase, collapsible Other tags
+
+### ⚠️ Action required: run SQL manually
+This session adds a new `tag_meta` table. **Tonda must run the SQL in the "tag_meta table" block under Useful SQL (above) once in the Supabase SQL editor.** Until that's done, tag colors/size-roles keep working exactly as before (localStorage-only, device-specific) — nothing breaks, but the cross-device fix below won't take effect until the table exists and Tag Studio's SAVE button is pressed once to seed it.
+
+### Date format → dd/mm/yyyy everywhere
+New helpers `fmtDate(ts)` (full `dd/mm/yyyy`) and `fmtDateShort(ts)` (`dd/mm`, no year, for tight spaces) added next to the other date helpers (~line 120). Replaced every `new Date(...).toLocaleDateString("en-GB", {...})` call site (there were 6 — detail modal "ADDED …" line, tile-card row date, wall-photo caption date, Stats NEWEST/OLDEST stat cards, Stats "On This Day" line). Native `<input type="date">` pickers are untouched by this — those still render per browser/OS locale, only the **displayed** dates changed format.
+
+### Root-cause fix: tag colors & size-roles now sync via Supabase (`tag_meta` table)
+**The actual bug behind "size tags don't show separately on not-signed-in mobile":** `customColors` (Tag Studio hex colors) and `tagRoles` (which tags are marked "size") were stored **only** in `localStorage` (`cv_tag_colors` / `cv_tag_roles` keys) — never in Supabase. A signed-out visitor on a different device/browser has empty localStorage, so `tagRoles[tag] === "size"` is never true for them, and the SIZE section of the tag filter never renders — it's not a CSS/mobile-width bug, it's a per-device-only data bug that happens to be most visible on a phone that never ran Tag Studio.
+- **New Supabase table `tag_meta`** (single row, `id = 'global'`, columns `colors jsonb` and `roles jsonb`) — same shape as the old localStorage blobs, just centralized. Pattern mirrors the existing `pinned` table: non-fatal fetch with `.catch(() => {})`, so a missing table degrades gracefully back to old localStorage-only behavior instead of breaking anything.
+- **`db.js`**: added `getTagMeta()` (returns `{colors, roles}`, defaults to `{}`/`{}` if no row yet) and `saveTagMeta({colors, roles})` (upsert via `Prefer: resolution=merge-duplicates`).
+- **`CollectionPage`** and **`WishlistPage`**: both now call `db.getTagMeta()` right after their main data load (same spot/pattern as `db.getPinned()`), and on success overwrite local `customColors`/`tagRoles` state *and* re-cache to localStorage via `saveCustomColors`/`saveTagRoles` — so the page paints instantly from whatever's cached locally, then upgrades to the synced version a moment later once Supabase responds.
+- **`tagRoles`** in both pages changed from a setter-less `useState` to a normal `[tagRoles, setTagRoles]` pair (previously it was never updated after initial load — now it needs to be, to receive the Supabase value).
+- **`StatsPage`**: added a `customColors` state (was a bare `loadCustomColors()` call inline in the render body); fetches `tag_meta` the same non-fatal way so the brand-breakdown chart's colors also stay in sync. The redundant second inline `loadCustomColors()` call inside the "On This Day" block was removed — it now just uses the component-level state.
+- **`TagColorModal`**: now accepts `tagRoles` as a prop (`initialTagRoles`) instead of reading `loadTagRoles()` directly, so it always starts from the freshest in-memory state rather than a potentially-stale localStorage snapshot. Its SAVE button now does three things instead of two: `saveCustomColors`/`saveTagRoles` (localStorage, unchanged) **plus** `db.saveTagMeta({colors, roles: tagRoles}).catch(() => {})` (new — pushes to Supabase, non-fatal so a save still "succeeds" locally even if the table doesn't exist yet). `onSave` callback signature changed from `onSave(colors)` to `onSave(colors, tagRoles)` — the call site in `CollectionPage` now does `onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }}`.
+
+### Bug fixed: Tag Studio / Add-Edit / Bulk Upload were only ever shown "Other" tags, never Brand/Size tags
+Separately from the sync issue above, found that `allTags` inside `CollectionPage`/`WishlistPage` is the **filtered "Other" tag list** (tags with no color and no size role — see the three-way split from the June 2026 "Brand/Size tag sections" session above), not the full tag list. Several call sites were passing this narrowed `allTags` where the *complete* tag list (`allTagsRaw`) was actually needed:
+- `<TagColorModal allTags={...}>` — was getting only "Other" tags, so Tag Studio's own uncategorized-tags list and autocomplete-adjacent logic never saw tags that already had a color/role. Fixed to `allTagsRaw`.
+- `<AddEditModal allTags={...}>` (×4 call sites: Collection add, Collection edit, Wishlist add, Wishlist edit) — meant the tag-name autocomplete dropdown in the Add/Edit form could never suggest an existing brand or size tag, only ever "other" ones. This is most of what was meant by "brand and size tag recommendations" not working. Fixed to `allTagsRaw` at all 4 sites.
+- `<BulkUploadModal allTags={...}>` — same issue for the bulk-upload shared-tag autocomplete. Fixed to `allTagsRaw`.
+- `<BulkTagModal>` was unaffected — it already derives its own `allTags` straight from `cans.flatMap(c => c.tags)`, no filtering.
+
+### Bulk tag autocomplete — Google-style ranked suggestions, added where missing entirely
+Per Tonda's direction: bulk tag recommendations should look like normal autocomplete (Google-style: type a few letters, get a dropdown ranked by relevance), and brand/size tags need to show up in that dropdown like any other tag (covered by the `allTagsRaw` fix above — no separate visual treatment for brand/size inside the dropdown itself).
+- **New shared ranking logic** — `rankTagMatches(query, exclude)` inside `BulkUploadModal` and an equivalent inline version in `AddEditModal`/`BulkTagModal`: tags whose name **starts with** the typed text are ranked before tags that merely **contain** it elsewhere, both groups alphabetized within themselves, capped at 6 results. This replaces the previous plain `tags.filter(t => t.includes(low))` (no ranking, so "330ml" and "limited-330ml" would tie arbitrarily by array order).
+- **`AddEditModal`**: `getTagSuggestions` upgraded to the same starts-with/contains ranking (was previously substring-only).
+- **`BulkUploadModal` shared tags input**: same upgrade, no UI changes (already had a dropdown).
+- **`BulkUploadModal` per-item tag input**: previously had **zero** autocomplete — just a bare text input + "+" button, despite the shared-tags input right above it having a full dropdown. This was the main "doesn't work in bulk general tags" complaint. Added `perTagSuggestions` state (`{idx: [tag,...]}`), `getItemTagSuggestions(i, q)`, and a positioned dropdown identical in spirit to the shared one (Enter/comma to add, Escape to dismiss, ArrowDown to pick the top suggestion, onBlur with a 150ms delay so the onMouseDown on a suggestion fires before the input blurs and closes the list). `addItemTag(i, val)` now optionally takes a value directly (for click-to-add from the dropdown) instead of only ever reading from `perTagInput` state.
+- **`BulkTagModal` "+ TAGS TO ADD" input**: previously had **zero** autocomplete as well. Added `tagSuggestions` state + the same `getTagSuggestions`/ranked-dropdown pattern (green-tinted hover to match this modal's "add" color scheme vs. the red used elsewhere). `addApplyTag(val)` similarly takes an optional direct value now.
+
+### Collapsible "Other" tags section (mobile space fix)
+New reusable component `CollapsibleOtherTags` (defined right after `TagPill`, ~line 678) replaces the old plain `<div>` + `.map()` block for the "Other" tag group in **both** the Collection and Wishlist tag filter panels (these are still the two separately-coded-but-structurally-identical blocks — both updated).
+- Collapses to the first 6 tags (`previewCount`) with a `▼ +N more` dashed chip once there are more than 8 tags total (`collapseAt`) — both thresholds are props with those defaults, not hardcoded, in case Tonda wants to tune them later.
+- Clicking the chip expands to show all tags and the chip becomes `▲ show less`.
+- Below the threshold (≤8 "Other" tags), renders exactly as before — no chip, no behavior change for collections that don't have a tag-heavy "Other" bucket yet.
+- This isn't actually mobile-specific in implementation (no `window.innerWidth`/media-query check) — it collapses based on tag *count*, which is what actually causes the "takes up half the page" problem, and that problem scales with screen width anyway (narrower screens wrap more tags per row → more vertical space per tag). Simpler and more robust than a viewport-width check, and it also tidies up desktop for vaults with a lot of loose/uncategorized tags.
+
+### Files touched
+- `src/App.jsx` — all of the above
+- `src/db.js` — added `getTagMeta()` / `saveTagMeta()`
+- `CLAUDE.md` — this section + `tag_meta` added to the Supabase Tables reference and Useful SQL
+
 
