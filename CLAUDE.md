@@ -701,3 +701,47 @@ Tonda asked to remove price sorting and the concept of price information entirel
 - `src/App.jsx`
 - `src/db.js`
 - `CLAUDE.md` — this section
+
+
+## 2026-06-21 — Average can color (auto) + "Sort by Color"
+
+Tonda asked for the average color of each can to be detected automatically (excluding the white `#ffffff` border) and a new "By color" sort option.
+
+### New: `avgColor` field on cans/wishes
+- **`computeAvgColor(source)`** (`src/App.jsx`, near the other canvas helpers): samples a downscaled 60×60 canvas of the photo, skips near-white pixels (r,g,b all ≥ 235 — catches the white padding `compressCanPhoto` adds) and skips near-transparent pixels (alpha < 16, for PNGs), then averages the rest into a `#rrggbb` hex string. Accepts a `File`/`Blob` *or* an already-loaded `HTMLImageElement` (the backfill tool passes an Image directly to avoid a redundant load).
+- **`loadImageCrossOrigin(url)`**: loads a remote Blob-storage URL into an `Image` with `crossOrigin="anonymous"` so canvas can read its pixels (needed for backfilling — Vercel Blob serves CORS headers by default, so this works without extra config).
+- Computed at upload time, reusing the already-compressed JPEG (no extra fetch):
+  - **`AddEditModal.handleCropped`** (single add/edit): fires `computeAvgColor(compressed)` right after compression, stored in new `avgColor` state, included in the object passed to `onSave`.
+  - **`BulkUploadModal.uploadAll`**: same — computed per-item from the compressed blob before/alongside the `/api/upload` call, included in `onSave({ ..., avgColor })`.
+  - **Mark-found flow** (Wishlist → Collection): carries `wish.avgColor` over to the new can object instead of dropping it.
+  - **Duplicate/copy** and the **folder-migration re-upload tool**: both already spread the original object (`{ ...can }` / `{ ...item, image: newUrl }`), so `avgColor` survives automatically since the photo pixels don't change.
+
+### New: "By Color" sort
+- **`hexToHsl(hex)`**: standard hex→HSL conversion, returns `[h, s, l]` or `null` for invalid/missing hex.
+- **`colorSortKey(hex)`**: buckets into `[0, hue, lightness]` for saturated colors and `[1, 0, lightness]` for near-grayscale (`s < 12`) so grays sort together (black→white) at the end instead of scattering randomly (hue is meaningless at s≈0).
+- **`sortCans()`**: new `"color"` branch sorts by `colorSortKey`, hue bucket first, then lightness, then name as tiebreak; cans with no `avgColor` sort last.
+- Added to `SortBar`'s sort list as `{ v: "color", l: L.sortColor }`, positioned after the size sorts. i18n: `sortColor` = "Barva" (CZ) / "Color" (EN).
+
+### New: "🎨 Recompute Colors" backfill tool
+Since `avgColor` is a new field, every can/wish added before this session has `avgColor = null`. Added an admin-only utility modal (`RecomputeColorsModal`, defined just above `TagColorModal`) reachable via a new toolbar button next to "🎨 Colors" (Collection page only):
+- On open, fetches the current wishlist itself via `db.getWishlist()` (Collection page doesn't otherwise have wishlist state) and combines with the `cans` prop to find every item with an `image` but no `avgColor`.
+- "▶ START" loops through them sequentially: `loadImageCrossOrigin` → `computeAvgColor` → save (`onSaveCan` prop for cans, which wraps `saveCan(can, { closeModal: false, refetch: false })`; direct `db.upsertWish` for wishes since there's no parent wish state to update optimistically).
+- Shows a progress bar + scrollable log (✅/⚠️ per item) and a "done" state. Items already colored aren't touched — safe to re-run any time (e.g. after adding cans some other way that skipped color computation).
+- i18n: `recomputeColors` = "🎨 Dopočítat barvy" (CZ) / "🎨 Recompute Colors" (EN).
+
+### Supabase schema change required (manual step)
+**`avg_color` column does not exist yet — Tonda needs to run this in the Supabase SQL editor before colors will actually persist:**
+```sql
+ALTER TABLE cans ADD COLUMN IF NOT EXISTS avg_color text;
+ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS avg_color text;
+```
+Until this is run, `db.upsertCan`/`upsertWish` will send `avg_color` in the payload and Supabase will reject or silently ignore it depending on PostgREST config — newly added cans won't actually save a color, and "Sort by color" will have nothing to sort by. After running the migration, use "🎨 Recompute Colors" once to backfill every existing can/wish; new uploads compute it automatically going forward.
+
+### Changes (`src/db.js`)
+- **`upsertCan` / `upsertWish`**: now send `avg_color: can.avgColor || null` / `wish.avgColor || null`.
+- **`rowToCan` / `rowToWish`**: now read `avgColor: r.avg_color || null` off the Supabase row.
+
+### Files touched
+- `src/App.jsx` — `computeAvgColor`, `loadImageCrossOrigin`, `hexToHsl`, `colorSortKey`, `sortCans` color branch, `SortBar` color option, `AddEditModal` avgColor state + save, `BulkUploadModal` avgColor compute + save, mark-found avgColor carry-over, new `RecomputeColorsModal` component + toolbar button + modal dispatch, i18n (`sortColor`, `recomputeColors` in both CZ/EN)
+- `src/db.js` — `avg_color` read/write in both can and wish converters/upserts
+- `CLAUDE.md` — this section
