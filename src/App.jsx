@@ -183,6 +183,63 @@ async function compressCanPhoto(file) {
   });
 }
 
+// Compute the average color of a can photo, ignoring the white/near-white
+// border the app pads photos with (see compressCanPhoto) and ignoring fully
+// transparent pixels (PNGs). Returns a "#rrggbb" string, or null on failure.
+// Accepts either a File/Blob or an already-loaded HTMLImageElement.
+async function computeAvgColor(source) {
+  const WHITE_THRESHOLD = 235; // r,g,b all >= this counts as "white border"
+  const ALPHA_THRESHOLD = 16;  // pixels with alpha below this are skipped
+  const SAMPLE = 60;           // downscale to this box for speed — color avg doesn't need full res
+
+  const fromImage = (img) => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = SAMPLE; canvas.height = SAMPLE;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
+      const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const pr = data[i], pg = data[i + 1], pb = data[i + 2], pa = data[i + 3];
+        if (pa < ALPHA_THRESHOLD) continue; // transparent — skip
+        if (pr >= WHITE_THRESHOLD && pg >= WHITE_THRESHOLD && pb >= WHITE_THRESHOLD) continue; // white border — skip
+        r += pr; g += pg; b += pb; n++;
+      }
+      if (n === 0) return null; // whole image was border/transparent — bail
+      const hex = v => Math.round(v / n).toString(16).padStart(2, "0");
+      return `#${hex(r)}${hex(g)}${hex(b)}`;
+    } catch {
+      return null; // e.g. canvas tainted by CORS
+    }
+  };
+
+  // Already a loaded <img> — just sample it directly.
+  if (source instanceof HTMLImageElement) return fromImage(source);
+
+  // File/Blob — load it into an Image first.
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(source);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(fromImage(img)); };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+// Load a remote image URL (e.g. a Vercel Blob URL) into an Image element with
+// CORS enabled, so its pixels can be read by canvas. Used for backfilling
+// avgColor on cans that already exist without it.
+function loadImageCrossOrigin(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = url;
+  });
+}
+
 // Auto-crop a PNG to its non-transparent (opaque) bounding box.
 // Returns a File (PNG, to preserve transparency) cropped to content, or the
 // original file unchanged if it's not a PNG / has no transparency / fails.
@@ -736,6 +793,7 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     { v: "tag", l: L.sortTag },
     { v: "size_asc", l: L.sortSizeAsc },
     { v: "size_desc", l: L.sortSizeDesc },
+    { v: "color", l: L.sortColor },
     { v: "countries", l: L.sortCountries },
   ];
 
@@ -801,6 +859,40 @@ function getSizeMl(can, tagRoles) {
   const sizeTag = (can.tags || []).find(t => tagRoles[t] === "size");
   return sizeTag ? parseSizeMl(sizeTag) : null;
 }
+// Convert "#rrggbb" to [h, s, l] (h in 0-360, s/l in 0-100). Returns null for
+// invalid input, so callers can push colorless cans to the end of a sort.
+function hexToHsl(hex) {
+  if (!hex || typeof hex !== "string") return null;
+  const m = hex.replace("#", "").match(/^([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const r = parseInt(m[1].slice(0, 2), 16) / 255;
+  const g = parseInt(m[1].slice(2, 4), 16) / 255;
+  const b = parseInt(m[1].slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+  const d = max - min;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return [h, s * 100, l * 100];
+}
+// Sort key for "by color": group into hue buckets (so reds stay with reds,
+// blues with blues, etc.) then order by lightness within a bucket. Grayscale
+// cans (very low saturation) are bucketed separately and ordered black→white
+// so they don't scatter randomly between hue groups (hue is meaningless at s≈0).
+function colorSortKey(hex) {
+  const hsl = hexToHsl(hex);
+  if (!hsl) return null;
+  const [h, s, l] = hsl;
+  if (s < 12) return [1, 0, l]; // grayscale bucket, after all hued colors
+  return [0, h, l];
+}
 function sortCans(cans, sort, tagRoles = {}) {
   return [...cans].sort((a, b) => {
     if (sort === "newest") return b.addedAt - a.addedAt;
@@ -821,6 +913,12 @@ function sortCans(cans, sort, tagRoles = {}) {
       if (sa === null) return 1; if (sb === null) return -1;
       return sb - sa || a.name.localeCompare(b.name);
     }
+    if (sort === "color") {
+      const ka = colorSortKey(a.avgColor), kb = colorSortKey(b.avgColor);
+      if (!ka && !kb) return a.name.localeCompare(b.name);
+      if (!ka) return 1; if (!kb) return -1; // colorless cans sort last
+      return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2] || a.name.localeCompare(b.name);
+    }
     if (sort === "countries") return (b.countries || []).length - (a.countries || []).length;
     return 0;
   });
@@ -833,6 +931,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState(initial.tags || []);
   const [image, setImage] = useState(initial.image || null);
+  const [avgColor, setAvgColor] = useState(initial.avgColor || null);
   const [note, setNote] = useState(initial.note || "");
   const [countries, setCountries] = useState(initial.countries || []);
   const [drag, setDrag] = useState(false);
@@ -881,6 +980,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
     setUploading(true); setUploadErr("");
     try {
       const compressed = await compressCanPhoto(croppedFile);
+      computeAvgColor(compressed).then(setAvgColor); // fire-and-forget, doesn't block upload
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
@@ -998,7 +1098,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
         </label>
       </div>
 
-      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, note, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
+      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, avgColor, note, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
         disabled={!name.trim()}
         style={{ width: "100%", padding: "13px", background: name.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: name.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: name.trim() ? "pointer" : "not-allowed", boxShadow: name.trim() ? "0 4px 16px #C8102E44" : "none", transition: "all 0.2s" }}>
         {initial.id ? "SAVE CHANGES" : "ADD TO VAULT"}
@@ -1215,6 +1315,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
       try {
         const src = item.croppedFile || item.file;
         const compressed = await compressCanPhoto(src);
+        const avgColor = await computeAvgColor(compressed);
         const res = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "image/jpeg", "x-filename": `${folder}/${Date.now()}.jpg`, "x-canvault-auth": atob(_PH) },
@@ -1226,7 +1327,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
         const pd = perItemDates[i] || {};
         const iDate = pd.date !== undefined ? pd.date : item.date;
         const iUnknown = pd.dateUnknown !== undefined ? pd.dateUnknown : item.dateUnknown;
-        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
+        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, avgColor, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
       } catch (err) {
         updateItem(i, { uploading: false, err: err.message });
       }
@@ -1678,6 +1779,92 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
   );
 }
 
+// ─── RECOMPUTE COLORS MODAL ───────────────────────────────────────────────────
+// One-off backfill utility: cans/wishes added before the avgColor feature
+// shipped have no stored color. This loads each missing-color image cross-
+// origin from Blob storage, samples it client-side, and saves the result.
+function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
+  const [state, setState] = useState("idle"); // idle | loading | running | done
+  const [progress, setProgress] = useState({ done: 0, total: 0, fail: 0 });
+  const [log, setLog] = useState([]);
+  const [wishes, setWishes] = useState([]);
+
+  useEffect(() => {
+    if (!db.isConfigured()) return;
+    db.getWishlist().then(rows => setWishes(rows ? rows.map(db.rowToWish) : [])).catch(() => {});
+  }, []);
+
+  const targets = [
+    ...cans.filter(c => c.image && !c.avgColor).map(c => ({ item: c, kind: "can" })),
+    ...wishes.filter(w => w.image && !w.avgColor).map(w => ({ item: w, kind: "wish" })),
+  ];
+
+  const addLog = (line) => setLog(l => [...l.slice(-60), line]);
+
+  const run = async () => {
+    setState("running");
+    setProgress({ done: 0, total: targets.length, fail: 0 });
+    let done = 0, fail = 0;
+    for (const { item, kind } of targets) {
+      try {
+        const img = await loadImageCrossOrigin(item.image);
+        const avgColor = await computeAvgColor(img);
+        if (!avgColor) throw new Error("no usable pixels");
+        if (kind === "can") await onSaveCan({ ...item, avgColor });
+        else await db.upsertWish({ ...item, avgColor }).catch(err => { throw err; });
+        done++;
+        addLog(`✅ ${item.name}`);
+      } catch (err) {
+        fail++;
+        addLog(`⚠️ ${item.name} — ${err.message || "failed"}`);
+      }
+      setProgress({ done, total: targets.length, fail });
+    }
+    setState("done");
+  };
+
+  return (
+    <ModalShell onClose={onClose} T={T}>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>
+        🎨 Recompute Colors
+      </div>
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
+
+      {targets.length === 0 ? (
+        <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.05em" }}>
+          ✅ Every can and wishlist item already has a stored color.
+        </p>
+      ) : (
+        <>
+          <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.05em", marginBottom: 16 }}>
+            {targets.length} item{targets.length === 1 ? "" : "s"} missing a color — this samples each photo (ignoring the white border) and saves the result so "Sort by color" works for them too.
+          </p>
+          {state === "idle" && (
+            <button onClick={run} style={{ width: "100%", padding: "12px", background: "#C8102E", border: "none", borderRadius: 10, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer", marginBottom: 14 }}>
+              ▶ START
+            </button>
+          )}
+          {(state === "running" || state === "done") && (
+            <>
+              <div style={{ height: 8, borderRadius: 999, background: T.bgInput, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{ height: "100%", background: "#C8102E", width: `${targets.length ? (progress.done / targets.length) * 100 : 0}%`, transition: "width 0.2s" }} />
+              </div>
+              <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textMuted, marginBottom: 14 }}>
+                {progress.done} / {progress.total} {progress.fail > 0 && `(${progress.fail} failed)`} {state === "done" ? "— done!" : "…"}
+              </p>
+            </>
+          )}
+          {log.length > 0 && (
+            <div style={{ maxHeight: 180, overflowY: "auto", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 10, padding: "8px 12px", fontFamily: "monospace", fontSize: 10, color: T.textMuted, lineHeight: 1.6 }}>
+              {log.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
+        </>
+      )}
+    </ModalShell>
+  );
+}
+
 // ─── TAG COLOR MODAL ──────────────────────────────────────────────────────────
 
 function TagColorModal({ T, allTags, customColors, tagRoles: initialTagRoles, onSave, onClose }) {
@@ -2054,6 +2241,7 @@ function CollectionPage({ T, L, isAdmin }) {
             <button onClick={() => setModal("bulk")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulk}</button>
             <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulkTags}</button>
             <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.colors}</button>
+            <button onClick={() => setModal("recomputeColors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.recomputeColors}</button>
             <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addCan}</button>
           </>
         )}
@@ -2158,6 +2346,7 @@ function CollectionPage({ T, L, isAdmin }) {
       {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTagsRaw} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTagsRaw} customColors={customColors} tagRoles={tagRoles} onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }} onClose={() => setModal(null)} />}
+      {modal === "recomputeColors" && <RecomputeColorsModal T={T} cans={cans} onSaveCan={can => saveCan(can, { closeModal: false, refetch: false })} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
           onDelete={id => { removeCan(id); setModal(null); }}
@@ -2474,7 +2663,7 @@ function WishlistPage({ T, L, isAdmin }) {
             setWishes(p => p.map(w => w.id === updated.id ? updated : w));
           }}
           onMarkFound={async (wish) => {
-            const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, tags: wish.tags, note: wish.note, countries: wish.countries || [], addedAt: Date.now() };
+            const newCan = { id: Date.now().toString(), name: wish.name, image: wish.image, avgColor: wish.avgColor || null, tags: wish.tags, note: wish.note, countries: wish.countries || [], addedAt: Date.now() };
             if (db.isConfigured()) await db.upsertCan(newCan).catch(console.error);
             removeWish(wish.id);
             setModal(null);
@@ -3399,7 +3588,7 @@ export default function App() {
     collectionTitle: "Sbírka plechovek", wishlistTitle: "Přání", canwallTitle: "Stěna plechovek", statsTitle: "Statistiky",
     collectionSub: "Kolekce plechovek", tagline: "KAŽDÁ PLECHOVKA MÁ PŘÍBĚH",
     signIn: "🔐 Přihlásit", signOut: "Odhlásit",
-    addCan: "+ Přidat", bulk: "📦 Hromadně", bulkTags: "🏷️ Hromadně upravit", colors: "🎨 Barvy",
+    addCan: "+ Přidat", bulk: "📦 Hromadně", bulkTags: "🏷️ Hromadně upravit", colors: "🎨 Barvy", recomputeColors: "🎨 Dopočítat barvy",
     random: "🎲 Náhodná", filterTag: "FILTROVAT DLE ŠTÍTKU", filterCountry: "🌍 FILTROVAT DLE ZEMĚ",
     clear: "zrušit", clearFilters: "zrušit filtry", cansInVault: (n) => `${n} PLECHOVEK VE SBÍRCE`,
     showingOf: (n, t) => `ZOBRAZENO ${n} Z ${t}`,
@@ -3423,7 +3612,7 @@ export default function App() {
     loading: "NAČÍTÁNÍ…",
     uploadAll: "⬆️ NAHRÁT", donClose: "✅ HOTOVO — ZAVŘÍT",
     sharedTags: "SDÍLENÉ ŠTÍTKY — přidány ke všem",
-    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortSizeAsc: "Velikost ↑", sortSizeDesc: "Velikost ↓", sortCountries: "Země",
+    sortLabel: "ŘADIT:", sortNewest: "Nejnovější", sortOldest: "Nejstarší", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Značka", sortTag: "Štítek", sortSizeAsc: "Velikost ↑", sortSizeDesc: "Velikost ↓", sortColor: "Barva", sortCountries: "Země",
     searchTags: "hledat štítky…", sizeTags: "VELIKOST", brandTagsLabel: "ZNAČKA", otherTagsLabel: "OSTATNÍ",
     gridView: "⊞ MŘÍŽKA", tileView: "▤ SEZNAM",
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
@@ -3434,7 +3623,7 @@ export default function App() {
     collectionTitle: "The Collection", wishlistTitle: "Wishlist", canwallTitle: "Can Wall", statsTitle: "Stats",
     collectionSub: "SODA CAN COLLECTION", tagline: "★ EVERY CAN TELLS A STORY ★",
     signIn: "🔐 Sign in", signOut: "Sign out",
-    addCan: "+ Add Can", bulk: "📦 Bulk", bulkTags: "🏷️ Bulk Edit", colors: "🎨 Colors",
+    addCan: "+ Add Can", bulk: "📦 Bulk", bulkTags: "🏷️ Bulk Edit", colors: "🎨 Colors", recomputeColors: "🎨 Recompute Colors",
     random: "🎲 Random", filterTag: "FILTER BY TAG", filterCountry: "🌍 FILTER BY COUNTRY",
     clear: "clear", clearFilters: "clear filters", cansInVault: (n) => `${n} CANS IN VAULT`,
     showingOf: (n, t) => `SHOWING ${n} OF ${t}`,
@@ -3458,7 +3647,7 @@ export default function App() {
     loading: "LOADING…",
     uploadAll: "⬆️ UPLOAD ALL", donClose: "✅ DONE — CLOSE",
     sharedTags: "SHARED TAGS — added to every can",
-    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortSizeAsc: "Size ↑", sortSizeDesc: "Size ↓", sortCountries: "Countries",
+    sortLabel: "SORT:", sortNewest: "Newest", sortOldest: "Oldest", sortAZ: "A → Z", sortZA: "Z → A", sortBrand: "Brand", sortTag: "Tag", sortSizeAsc: "Size ↑", sortSizeDesc: "Size ↓", sortColor: "Color", sortCountries: "Countries",
     searchTags: "search tags…", sizeTags: "SIZE", brandTagsLabel: "BRAND", otherTagsLabel: "OTHER",
     gridView: "⊞ GRID", tileView: "▤ TILE",
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
