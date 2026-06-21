@@ -678,3 +678,26 @@ New reusable component `CollapsibleOtherTags` (defined right after `TagPill`, ~l
 - `CLAUDE.md` — this section + `tag_meta` added to the Supabase Tables reference and Useful SQL
 
 
+## 2026-06-21 — Removed price feature entirely
+
+Tonda asked to remove price sorting and the concept of price information entirely, including from the wishlist.
+
+### Changes (`src/App.jsx`)
+- **Sort options**: removed `price_asc` / `price_desc` entries from the `SortBar` sort list.
+- **`parsePrice()`**: deleted (was only used by the price sort comparators).
+- **`sortCans()`**: removed the `price_asc` / `price_desc` comparator branches.
+- **`AddEditModal`**: removed `price` state, the "PRICE (optional)" input field, and `price` from the object passed to `onSave`.
+- **Detail views**: removed the `💰 {can.price}` line from the Collection detail modal and the `💰 {wish.price}` line from the Wishlist detail modal.
+- **Wishlist usages of `AddEditModal`**: `extraFields` changed from `["note","price"]` to `["note"]` (both the "add" and "edit" call sites).
+- **Mark-found flow**: removed `price: ""` from the new can object created when a wishlist item is marked as found.
+- **i18n**: removed the `price` label key and `sortPriceAsc` / `sortPriceDesc` keys from both the Czech and English `L` objects.
+
+### Changes (`src/db.js`)
+- **`upsertCan` / `upsertWish`**: stopped sending `price` in the payload.
+- **`rowToCan` / `rowToWish`**: stopped reading `price` off the Supabase row.
+- The underlying `price` column in Supabase (`cans` / `wishlist` tables) was **not** dropped — the app simply no longer reads or writes it. If Tonda wants the column gone too, that's a manual `ALTER TABLE ... DROP COLUMN price` in the Supabase SQL editor (not done here since it's a schema change with no app-side urgency).
+
+### Files touched
+- `src/App.jsx`
+- `src/db.js`
+- `CLAUDE.md` — this section
