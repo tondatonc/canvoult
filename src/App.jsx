@@ -291,6 +291,20 @@ async function autoCropToOpaqueBounds(file) {
   });
 }
 
+// When a photo is replaced with a new one, the old photo is no longer referenced
+// anywhere, so delete it from Blob storage to avoid orphaned files piling up.
+// Safe no-ops: no old image, old === new, or old image isn't a Blob URL (e.g. it
+// was a local data: URL fallback from a failed upload — nothing to delete server-side).
+function deleteOldBlobIfReplaced(oldUrl, newUrl) {
+  if (!oldUrl || oldUrl === newUrl) return;
+  if (!/^https?:\/\//.test(oldUrl)) return; // skip data: URLs / local fallbacks
+  fetch("/api/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-canvault-auth": atob(_PH) },
+    body: JSON.stringify({ url: oldUrl }),
+  }).catch(() => {}); // best-effort cleanup — never block or surface errors to the user
+}
+
 // Compress wall photos to just under 4MB Vercel limit, max quality
 async function compressWallPhoto(file) {
   return new Promise(resolve => {
@@ -978,6 +992,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
     setCropSrc(null);
     setPendingFile(null);
     setUploading(true); setUploadErr("");
+    const oldImage = image; // capture the photo we're about to replace, so we can delete it once the new one is safely up
     try {
       const compressed = await compressCanPhoto(croppedFile);
       computeAvgColor(compressed).then(setAvgColor); // fire-and-forget, doesn't block upload
@@ -993,6 +1008,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
       if (res.ok) {
         const { url } = await res.json();
         setImage(url);
+        deleteOldBlobIfReplaced(oldImage, url);
       } else {
         const err = await res.json().catch(() => ({}));
         throw new Error(`${res.status}: ${err.error || "unknown"}`);
@@ -1248,11 +1264,18 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
     setQueue(items);
     // Silently auto-crop every PNG to its non-transparent bounds — no dialog shown.
     // Manual recropping is only ever triggered by the user explicitly clicking the ✂️ button.
+    // Guard: this runs async per-item, so if the user manually crops (or this same
+    // auto-crop already landed) before it resolves, do NOT overwrite that newer result —
+    // otherwise the stale auto-crop result stomps the manual crop the user just made.
     items.forEach((item, idx) => {
       autoCropToOpaqueBounds(item.file).then(cropped => {
         if (cropped !== item.file) {
           const url = URL.createObjectURL(cropped);
-          setQueue(q => q.map((it, i) => i === idx ? { ...it, croppedFile: cropped, croppedUrl: url, autoCropped: true } : it));
+          setQueue(q => q.map((it, i) => {
+            if (i !== idx) return it;
+            if (it.croppedFile) return it; // already cropped (manually or by a prior auto-crop) — don't clobber
+            return { ...it, croppedFile: cropped, croppedUrl: url, autoCropped: true };
+          }));
         }
       });
     });
