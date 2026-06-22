@@ -745,3 +745,26 @@ Until this is run, `db.upsertCan`/`upsertWish` will send `avg_color` in the payl
 - `src/App.jsx` — `computeAvgColor`, `loadImageCrossOrigin`, `hexToHsl`, `colorSortKey`, `sortCans` color branch, `SortBar` color option, `AddEditModal` avgColor state + save, `BulkUploadModal` avgColor compute + save, mark-found avgColor carry-over, new `RecomputeColorsModal` component + toolbar button + modal dispatch, i18n (`sortColor`, `recomputeColors` in both CZ/EN)
 - `src/db.js` — `avg_color` read/write in both can and wish converters/upserts
 - `CLAUDE.md` — this section
+
+
+---
+
+## 2026-06-22 — Auto-delete replaced photo blob + fix auto-crop race overwriting manual crops
+
+### Bug 1: Old photo not deleted when replaced
+When editing a can (or wishlist item) and changing its photo via "✂️ CHANGE & RE-CROP", the new photo was uploaded to Vercel Blob but the **old** photo blob was never deleted — orphaned files accumulated in storage indefinitely.
+
+**Fix (`src/App.jsx`):**
+- New helper `deleteOldBlobIfReplaced(oldUrl, newUrl)` (defined near `compressCanPhoto`/`autoCropToOpaqueBounds`): fire-and-forget POST to `/api/delete` with `{ url: oldUrl }`. No-ops if there's no old URL, old === new, or the old "URL" is actually a local `data:` URL (the failed-upload fallback path) since there's nothing to delete server-side in that case. Errors are swallowed — cleanup is best-effort and must never block the UI or surface an error to the user over a photo that already saved successfully.
+- Wired into `AddEditModal.handleCropped` (the single-can add/edit photo flow): captures `oldImage = image` before the new upload starts, then calls `deleteOldBlobIfReplaced(oldImage, url)` right after the new blob URL comes back from `/api/upload`.
+- `api/delete.mjs` already existed (takes `{ url }`, calls `@vercel/blob`'s `del()`) but was unused until now — no backend changes needed.
+- Scope: this only applies to the **edit-existing-photo** flow (`AddEditModal`), since that's the only place where an old blob URL is genuinely being replaced. The Bulk Upload queue and Wall Photo "add" flow are both net-new uploads (no prior blob to clean up), and the Wishlist "mark as found" flow uploads a brand-new found-photo rather than replacing an existing one.
+
+### Bug 2: Auto-crop race condition stomping manual crops
+In the Bulk Upload modal, every PNG added to the queue is silently auto-cropped to its opaque bounds in the background (`autoCropToOpaqueBounds`, fire-and-forget per item). If the user manually re-cropped an item (✂️ button → `CropModal` → `handleCropped`) *before* that background auto-crop promise resolved, the auto-crop's `.then()` callback would unconditionally overwrite `croppedFile`/`croppedUrl`/`autoCropped`, silently discarding the manual crop and reapplying the stale auto-crop result on top.
+
+**Fix (`src/App.jsx`, `BulkUploadModal.handleFiles`):** the auto-crop `.then()` callback now checks the *current* queue state at resolution time — if `it.croppedFile` is already set (because the user manually cropped it, or a duplicate auto-crop already landed), it leaves the item untouched instead of overwriting it. Manual crops always win once they've happened; auto-crop can only ever apply to an item that hasn't been touched yet.
+
+### Files touched
+- `src/App.jsx` — new `deleteOldBlobIfReplaced` helper; `AddEditModal.handleCropped` now calls it after a successful re-upload; `BulkUploadModal.handleFiles` auto-crop callback now guards against overwriting an already-cropped item
+- `CLAUDE.md` — this section
