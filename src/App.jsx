@@ -792,8 +792,8 @@ function makeGridZoomWheelHandler(viewMode, setViewMode) {
     e.preventDefault();
     const idx = GRID_MODES.indexOf(viewMode);
     if (idx === -1) return;
-    if (e.deltaY < 0 && idx > 0) setViewMode(GRID_MODES[idx - 1]); // scroll up = zoom in
-    else if (e.deltaY > 0 && idx < GRID_MODES.length - 1) setViewMode(GRID_MODES[idx + 1]); // scroll down = zoom out
+    if (e.deltaY < 0 && idx < GRID_MODES.length - 1) setViewMode(GRID_MODES[idx + 1]); // scroll up = zoom in (bigger cards)
+    else if (e.deltaY > 0 && idx > 0) setViewMode(GRID_MODES[idx - 1]); // scroll down = zoom out (smaller cards)
   };
 }
 
@@ -833,22 +833,22 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
         <button key={s.v} onClick={() => setSort(s.v)} style={btnStyle(sort === s.v)}>{s.l}</button>
       ))}
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
-        {/* Zoom out (more items) */}
+        {/* Zoom out (smaller cards, more per row) */}
         <button
-          onClick={() => canZoomOut && setViewMode(GRID_MODES[curIdx + 1])}
+          onClick={() => canZoomIn && setViewMode(GRID_MODES[curIdx - 1])}
           title="Zoom out"
-          style={{ ...btnStyle(false), opacity: canZoomOut ? 1 : 0.3, padding: "4px 8px", fontSize: 14 }}>−</button>
+          style={{ ...btnStyle(false), opacity: canZoomIn ? 1 : 0.3, padding: "4px 8px", fontSize: 14 }}>−</button>
         {/* Current mode icon */}
         {GRID_MODES.map(v => (
           <button key={v} onClick={() => setViewMode(v)} style={btnStyle(viewMode === v)} title={v}>
             {iconFor(v)}
           </button>
         ))}
-        {/* Zoom in (fewer items) */}
+        {/* Zoom in (bigger cards, fewer per row) */}
         <button
-          onClick={() => canZoomIn && setViewMode(GRID_MODES[curIdx - 1])}
+          onClick={() => canZoomOut && setViewMode(GRID_MODES[curIdx + 1])}
           title="Zoom in"
-          style={{ ...btnStyle(false), opacity: canZoomIn ? 1 : 0.3, padding: "4px 8px", fontSize: 14 }}>+</button>
+          style={{ ...btnStyle(false), opacity: canZoomOut ? 1 : 0.3, padding: "4px 8px", fontSize: 14 }}>+</button>
       </div>
     </div>
   );
