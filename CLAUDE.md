@@ -768,3 +768,23 @@ In the Bulk Upload modal, every PNG added to the queue is silently auto-cropped 
 ### Files touched
 - `src/App.jsx` — new `deleteOldBlobIfReplaced` helper; `AddEditModal.handleCropped` now calls it after a successful re-upload; `BulkUploadModal.handleFiles` auto-crop callback now guards against overwriting an already-cropped item
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-06-25 — Fix inverted zoom +/- buttons in grid view toolbar
+
+### Bug: zoom buttons did the opposite of their labels
+In the `SortBar` view-mode toolbar, the `−`/`+` buttons next to the grid-mode icons (▦ grid5 / ⊞ grid3 / ▣ grid2 / ▤ tile) were wired backwards relative to their "Zoom out"/"Zoom in" titles and the universal zoom convention (zoom in = bigger, zoom out = smaller/more-at-once):
+- `−` ("Zoom out") moved `curIdx + 1`, i.e. toward `tile` — which is actually **bigger** cards.
+- `+` ("Zoom in") moved `curIdx - 1`, i.e. toward `grid5` — which is actually **smaller** cards.
+
+So clicking `+` shrank the cards and clicking `−` enlarged them — the opposite of what the icons and tooltips implied. The Ctrl/Cmd+scroll wheel handler (`makeGridZoomWheelHandler`) had the identical bug: "scroll up = zoom in" was coded to move toward `grid5` (smaller).
+
+**Fix (`src/App.jsx`):**
+- `SortBar`: swapped the click targets — `−` now does `curIdx - 1` (toward `grid5`, smaller cards, gated by `canZoomIn`), `+` now does `curIdx + 1` (toward `tile`, bigger cards, gated by `canZoomOut`). Icons/positions unchanged, only the targets swapped.
+- `makeGridZoomWheelHandler`: swapped the deltaY branches to match — scroll up now moves `idx + 1` (zoom in / bigger), scroll down now moves `idx - 1` (zoom out / smaller).
+- Single shared `SortBar`/wheel-handler used by both Collection and Wishlist views, so the fix applies to both automatically.
+
+### Files touched
+- `src/App.jsx` — `SortBar` zoom button handlers, `makeGridZoomWheelHandler`
+- `CLAUDE.md` — this section
