@@ -788,3 +788,20 @@ So clicking `+` shrank the cards and clicking `−` enlarged them — the opposi
 ### Files touched
 - `src/App.jsx` — `SortBar` zoom button handlers, `makeGridZoomWheelHandler`
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-07-22 — Narrow tag filter options based on active tag selection
+
+### Feature: tag filter panel now narrows as you filter
+Previously, selecting a tag in the tag filter bar (Collection or Wishlist) left every other tag visible as an option, even ones that had zero overlap with the currently filtered cans/wishes. Now the tag option list narrows to only tags that actually co-occur with the items matching the currently active tag(s), so each additional tag selection progressively narrows the remaining choices.
+
+**Implementation (`src/App.jsx`):**
+- **Collection view:** added `cansForTagOptions` — when `activeTags.length > 0`, this is `cans` filtered to only those matching every active tag; otherwise it's all `cans`. `allTagsRaw` (the source for brand/size/other tag buckets) is now built from `[...activeTags, ...cansForTagOptions.flatMap(c => c.tags)]` (deduped) instead of all cans' tags — the spread of `activeTags` guarantees currently-selected tags stay visible/clickable (to deselect) even in edge cases. `tagCounts` was also switched to derive from `cansForTagOptions` so the counts shown next to each tag pill reflect the narrowed set, not the full collection.
+- **Wishlist view:** identical pattern — added `wishesForTagOptions`, rebuilt `allTagsRaw` and `tagCounts` from it the same way.
+- No changes to the actual filtering logic (`baseFiltered`/`wishFiltered` `matchTags` conditions) — those already required all active tags to match; this change only affects which tags are *offered* as further filter options.
+- No new i18n strings needed.
+
+### Files touched
+- `src/App.jsx` — `Collection` component (`cansForTagOptions`, `allTagsRaw`, `tagCounts`), `Wishlist` component (`wishesForTagOptions`, `allTagsRaw`, `tagCounts`)
+- `CLAUDE.md` — this section
