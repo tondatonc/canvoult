@@ -2168,11 +2168,13 @@ function CollectionPage({ T, L, isAdmin }) {
     });
   }, []);
 
-  const tagCounts = cans.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const [tagSortMode, setTagSortMode] = useState("alpha"); // "alpha" | "count"
   const [tagSearch, setTagSearch] = useState("");
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
-  const allTagsRaw = [...new Set(cans.flatMap(c => c.tags))];
+  // Narrow tag options to only tags that co-occur with the cans matching the currently active tags
+  const cansForTagOptions = activeTags.length > 0 ? cans.filter(c => activeTags.every(t => c.tags.includes(t))) : cans;
+  const allTagsRaw = [...new Set([...activeTags, ...cansForTagOptions.flatMap(c => c.tags)])];
+  const tagCounts = cansForTagOptions.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const allTagsSorted = tagSortMode === "count"
     ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
     : [...allTagsRaw].sort();
@@ -2508,8 +2510,10 @@ function WishlistPage({ T, L, isAdmin }) {
   const [tagSearch, setTagSearch] = useState("");
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
-  const allTagsRaw = [...new Set(wishes.flatMap(w => w.tags))].sort();
-  const tagCounts = wishes.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
+  // Narrow tag options to only tags that co-occur with the wishes matching the currently active tags
+  const wishesForTagOptions = activeTags.length > 0 ? wishes.filter(w => activeTags.every(t => w.tags.includes(t))) : wishes;
+  const allTagsRaw = [...new Set([...activeTags, ...wishesForTagOptions.flatMap(w => w.tags)])].sort();
+  const tagCounts = wishesForTagOptions.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
   const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
   const brandTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
   const otherTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
