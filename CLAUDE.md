@@ -821,3 +821,21 @@ Previously, `ModalShell` closed on any click on the dark backdrop (`onClick={onC
 ### Files touched
 - `src/App.jsx` — `ModalShell`, `AddEditModal`, `BulkUploadModal`
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-07-25 — Confirm before exiting Add/Edit and Bulk Upload modals
+
+### Feature: × close button now asks for confirmation on these two modals
+Follow-up to the backdrop-click-disable change earlier today. Since the × button is now the only way to close the Add/Edit and Bulk Upload modals, added a native `window.confirm()` prompt before the close actually happens, so an accidental click on × doesn't silently discard an in-progress entry or upload queue.
+
+**Implementation (`src/App.jsx`):**
+- `ModalShell` gained a `confirmClose` prop (string message, default `null`). Internally it now uses a `handleClose` wrapper: if `confirmClose` is set, it calls `window.confirm(confirmClose)` and only proceeds to the real `onClose` if the user confirms. Both the × button and the (already-disabled-when-`preventBackdropClose`) backdrop click route through `handleClose`.
+- `AddEditModal` passes `confirmClose="Discard your changes and close?"`.
+- `BulkUploadModal` passes `confirmClose="Discard this bulk upload and close?"`.
+- The "DONE — CLOSE" button shown after a bulk upload finishes (`allDone` state) still calls `onClose` directly — no confirmation, since that's a completed/successful action, not an accidental exit. Same for the REMOVE (delete) button in Add/Edit — deletion itself is the confirmed intent.
+- No new i18n strings — this component's strings are hardcoded English already (T here is the color theme, not the L translation object), consistent with existing pattern in `AddEditModal`/`BulkUploadModal`.
+
+### Files touched
+- `src/App.jsx` — `ModalShell`, `AddEditModal`, `BulkUploadModal`
+- `CLAUDE.md` — this section
