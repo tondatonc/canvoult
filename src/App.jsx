@@ -702,9 +702,9 @@ function CanSvg({ color, name }) {
 
 // ─── SHARED UI ───────────────────────────────────────────────────────────────
 
-function ModalShell({ onClose, children, T }) {
+function ModalShell({ onClose, children, T, preventBackdropClose = false }) {
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000000bb", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div onClick={preventBackdropClose ? undefined : onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000000bb", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: "#ffffff",
         border: `3px solid ${T.border}`, borderRadius: 20,
@@ -1024,7 +1024,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   return (
     <>
     {cropSrc && <CropModal src={cropSrc} T={T} quality={0.85} targetKB={150} onCrop={handleCropped} onCancel={() => { setCropSrc(null); setPendingFile(null); URL.revokeObjectURL(cropSrc); }} />}
-    <ModalShell onClose={onClose} T={T}>
+    <ModalShell onClose={onClose} T={T} preventBackdropClose>
       <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>
         {initial.id ? "Edit" : "Add a Can"}
       </div>
@@ -1377,7 +1377,7 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
   }
 
   return (
-    <ModalShell onClose={onClose} T={T}>
+    <ModalShell onClose={onClose} T={T} preventBackdropClose>
       <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>Bulk Upload</div>
       <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 14px", borderRadius: 2 }} />
 
