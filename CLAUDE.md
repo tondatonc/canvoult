@@ -805,3 +805,19 @@ Previously, selecting a tag in the tag filter bar (Collection or Wishlist) left 
 ### Files touched
 - `src/App.jsx` — `Collection` component (`cansForTagOptions`, `allTagsRaw`, `tagCounts`), `Wishlist` component (`wishesForTagOptions`, `allTagsRaw`, `tagCounts`)
 - `CLAUDE.md` — this section
+
+## 2026-07-25 — Prevent backdrop-click-to-close on Add/Edit and Bulk Upload modals
+
+### Feature: clicking outside the modal no longer closes it during upload
+Previously, `ModalShell` closed on any click on the dark backdrop (`onClick={onClose}` on the outer fixed div), which meant an accidental click outside the modal while adding a can or doing a bulk upload would discard in-progress entries. Added an opt-in `preventBackdropClose` prop to `ModalShell`; when true, the backdrop `onClick` is disabled entirely (the outer div's `onClick` becomes `undefined`), so the modal can only be closed via the × button or explicit Cancel/Done actions.
+
+**Implementation (`src/App.jsx`):**
+- `ModalShell({ onClose, children, T, preventBackdropClose = false })` — backdrop div now uses `onClick={preventBackdropClose ? undefined : onClose}`.
+- `AddEditModal` (covers both normal "Add a Can"/"Add to Wishlist" and Edit flows, collection + wishlist) now renders `<ModalShell onClose={onClose} T={T} preventBackdropClose>`.
+- `BulkUploadModal` now renders `<ModalShell onClose={onClose} T={T} preventBackdropClose>`.
+- All other modals (delete confirm, Tag Studio, wall photo add, etc.) are unchanged and still close on backdrop click.
+- No new i18n strings needed.
+
+### Files touched
+- `src/App.jsx` — `ModalShell`, `AddEditModal`, `BulkUploadModal`
+- `CLAUDE.md` — this section
