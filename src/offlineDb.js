@@ -85,5 +85,6 @@ export async function cachedFetch(key, fetchFn) {
 
   const fresh = await fetchFn();
   idbSet(key, fresh); // fire and forget
+  idbSet("lastSync", Date.now()); // fire and forget
   return fresh;
 }
