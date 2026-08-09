@@ -1,5 +1,5 @@
 // db.js — Supabase database layer for CanVault
-import { cachedFetch } from "./offlineDb.js";
+import { cachedFetch, idbSet, idbGet } from "./offlineDb.js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -25,6 +25,33 @@ async function request(url, options = {}) {
 
 function base(table) {
   return `${SUPABASE_URL}/rest/v1/${table}`;
+}
+
+// ─── MANUAL SYNC ────────────────────────────────────────────────────────────
+// Used by the "Sync now" button — always hits the network (ignores the
+// wifi gate that getCans/getWishlist/getPinned/getTagMeta apply), and
+// refreshes the offline cache + last-synced timestamp for all four tables
+// in one go. Throws if offline or the network request fails, so the caller
+// can show an error instead of silently doing nothing.
+
+export async function forceSync() {
+  const [cansRows, wishRows, pinnedRows, tagMetaRows] = await Promise.all([
+    request(`${base("cans")}?order=added_at.desc&select=*`, { headers: headers() }),
+    request(`${base("wishlist")}?order=added_at.desc&select=*`, { headers: headers() }),
+    request(`${base("pinned")}?select=can_id,type`, { headers: headers() }),
+    request(`${base("tag_meta")}?id=eq.global&select=colors,roles`, { headers: headers() }),
+  ]);
+  await idbSet("cans", cansRows);
+  await idbSet("wishlist", wishRows);
+  await idbSet("pinned", pinnedRows || []);
+  await idbSet("tag_meta", tagMetaRows);
+  const ts = Date.now();
+  await idbSet("lastSync", ts);
+  return ts;
+}
+
+export async function getLastSyncTime() {
+  return idbGet("lastSync");
 }
 
 // ─── CANS ────────────────────────────────────────────────────────────────────
