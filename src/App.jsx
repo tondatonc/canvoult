@@ -9,6 +9,71 @@ import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countrie
 const _PH = "c29kYWNhbjEyMw==";
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
+// "Last synced" indicator + manual "Sync now" button. Self-contained: reads
+// its own timestamp from IndexedDB (via db.getLastSyncTime) and calls
+// db.forceSync() directly, so it doesn't touch any other component's state.
+// On success it reloads the page so the freshly-synced data actually shows
+// up in whichever view is open (simplest way to guarantee correctness
+// without restructuring how each page loads its own data).
+function SyncStatus({ cz }) {
+  const [lastSync, setLastSync] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [status, setStatus] = useState(null); // null | "ok" | "error" | "offline"
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+
+  useEffect(() => {
+    db.getLastSyncTime().then(ts => { if (ts) setLastSync(ts); }).catch(() => {});
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  const timeAgo = (ts) => {
+    if (!ts) return cz ? "nikdy" : "never";
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return cz ? "právě teď" : "just now";
+    const m = Math.floor(s / 60);
+    if (m < 60) return cz ? `před ${m} min` : `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return cz ? `před ${h} h` : `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return cz ? `před ${d} dny` : `${d}d ago`;
+  };
+
+  const handleSync = async () => {
+    if (!online) { setStatus("offline"); return; }
+    setSyncing(true);
+    setStatus(null);
+    try {
+      const ts = await db.forceSync();
+      setLastSync(ts);
+      setStatus("ok");
+      setTimeout(() => window.location.reload(), 700);
+    } catch {
+      setStatus("error");
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 4px" }}>
+      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: "#FFD0C0", letterSpacing: "0.05em" }}>
+        {cz ? "SYNCHRONIZOVÁNO: " : "SYNCED: "}{timeAgo(lastSync)}
+        {status === "error" && <span style={{ color: "#FFB0A0", marginLeft: 6 }}>{cz ? "chyba" : "failed"}</span>}
+        {status === "offline" && <span style={{ color: "#FFB0A0", marginLeft: 6 }}>{cz ? "offline" : "offline"}</span>}
+      </span>
+      <button onClick={handleSync} disabled={syncing} style={{ background: "transparent", border: "2px solid #FFD0C055", borderRadius: 8, padding: "6px 10px", color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, cursor: syncing ? "default" : "pointer", letterSpacing: "0.05em", opacity: syncing ? 0.6 : 1 }}>
+        {syncing ? (cz ? "SYNCHRONIZUJI…" : "SYNCING…") : status === "ok" ? "✅" : (cz ? "🔄 SYNC" : "🔄 SYNC NOW")}
+      </button>
+    </div>
+  );
+}
+
 // Small fixed-position pill that shows up only when the browser is offline,
 // so it's obvious the data on screen is from local cache. Self-contained —
 // doesn't read or write any app state, so it can't affect anything else.
@@ -3780,7 +3845,10 @@ export default function App() {
                 {currentNav.path === n.path && <span style={{ marginLeft: "auto" }}>●</span>}
               </button>
             ))}
-            <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 12 }}>
+            <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 4 }}>
+              <SyncStatus cz={cz} />
+            </div>
+            <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 4, paddingTop: 12 }}>
               {isAdmin
                 ? <button onClick={() => { setIsAdmin(false); localStorage.removeItem("cv_admin"); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signOut.toUpperCase()}</button>
                 : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signIn}</button>
