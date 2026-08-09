@@ -839,3 +839,50 @@ Follow-up to the backdrop-click-disable change earlier today. Since the × butto
 ### Files touched
 - `src/App.jsx` — `ModalShell`, `AddEditModal`, `BulkUploadModal`
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Offline support (PWA): service worker + IndexedDB cache + wifi-gated sync
+
+### Feature: browse the collection offline, only re-download over wifi (Android)
+Tonda has CanVault installed as a PWA on Android Chrome and wanted to browse cans without a connection, and avoid burning mobile data — new cans/images should only sync when on wifi.
+
+**New files:**
+- `src/offlineDb.js` — small IndexedDB key/value wrapper (`idbGet`/`idbSet`) plus `cachedFetch(key, fetchFn)`, which:
+  - Offline (`navigator.onLine === false`): always serves from IndexedDB cache; throws only if nothing has ever been cached for that key.
+  - Online but **not** on wifi (`navigator.connection.type !== "wifi"`): serves cache if present (saves mobile data); falls through to network only if cache is empty (so first load isn't blank).
+  - Online on wifi, or on a platform where wifi can't be detected (iOS Safari, desktop — `navigator.connection` unsupported/no `.type`): fetches fresh and refreshes the cache. We default to "allow sync" when we can't detect network type, rather than silently withholding updates.
+  - `isOnWifi()` — reliable on Android Chrome via the Network Information API's `connection.type`; not supported on iOS/desktop (documented limitation).
+- `public/sw.js` — service worker, two strategies:
+  - Images (can/wishlist/wall photos from Vercel Blob, flag icons from flagcdn.com): cache-first, so once viewed a photo never needs re-downloading.
+  - App shell (JS/CSS/HTML): network-first with cache fallback, and offline navigations fall back to cached `/index.html` (SPA-safe).
+  - Explicitly ignores `*.supabase.co` and `/api/*` — those are left to `db.js`'s own offline/wifi logic and to the app's existing `.catch(() => {})` handling, so failure behavior there is unchanged.
+- `public/manifest.json` — proper PWA manifest (`display: standalone`, uses existing `can.svg` as icon) so "Add to Home Screen" installs a real standalone app rather than just a browser shortcut.
+
+**Changed files:**
+- `src/db.js` — `getCans()`, `getWishlist()`, `getPinned()`, `getTagMeta()` now go through `cachedFetch(key, ...)`. Write functions (`upsertCan`, `deleteCan`, etc.) are untouched — **known limitation:** if you add/edit a can and go offline before the next successful `getCans()` fetch, that change won't appear in the offline cache until you're back online once. Not handled to keep this change low-risk; can be added later (update the relevant IndexedDB key optimistically on write) if it becomes annoying in practice.
+- `src/main.jsx` — registers `/sw.js` on `window.load`, wrapped in a feature check + `.catch(() => {})` so registration failure can't break the app.
+- `index.html` — added `<link rel="manifest">`, `theme-color`, and `apple-mobile-web-app-*` meta tags.
+- `src/App.jsx` — added a small self-contained `OfflineBadge` component (own `online`/`offline` event listener, no shared state with the rest of the app) rendered at the root, showing a small pill at the bottom of the screen ("OFFLINE — SHOWING SAVED DATA" / Czech equivalent) only when `navigator.onLine` is false. Everything else in `App.jsx` is unchanged.
+
+### Why this is low-risk
+- All new logic lives in new, isolated files (`offlineDb.js`, `sw.js`, `manifest.json`) or small additive wrappers around existing `db.js` functions — no existing call sites, business logic, or component trees were restructured.
+- `cachedFetch` degrades to "just fetch, same as before" whenever IndexedDB/`navigator.connection` are unavailable — try/catch wrapped throughout `offlineDb.js`.
+- The service worker explicitly excludes Supabase/API traffic, so the app's existing network error handling is untouched.
+- Validated `App.jsx`, `db.js`, `main.jsx`, `offlineDb.js`, `sw.js` with both `@babel/parser` and `esbuild` before pushing; verified pushed content byte-for-byte against local files via the GitHub Contents API after push.
+
+### Known limitations
+- Wifi detection (`connection.type`) only works on Android Chrome. iOS Safari / desktop Chrome always "allow sync" since the browser can't report connection type.
+- No manual "Sync now" button yet — sync happens automatically whenever `getCans`/`getWishlist`/etc. run while on wifi. Could add one if useful.
+- No cache invalidation on write — see limitation note under `src/db.js` above.
+- App icon in the manifest reuses the existing `can.svg`; no dedicated maskable/multi-size PNG icon set yet.
+
+### Files touched
+- `src/offlineDb.js` — new
+- `public/sw.js` — new
+- `public/manifest.json` — new
+- `src/db.js` — `getCans`, `getWishlist`, `getPinned`, `getTagMeta`
+- `src/main.jsx` — service worker registration
+- `index.html` — manifest link + PWA meta tags
+- `src/App.jsx` — `OfflineBadge` component + render call
+- `CLAUDE.md` — this section
