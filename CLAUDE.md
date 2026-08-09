@@ -909,3 +909,35 @@ Added a way to force a fresh sync on demand and see when data was last synced, s
 - `src/db.js` — `forceSync`, `getLastSyncTime`
 - `src/App.jsx` — `SyncStatus` component + render call in mobile menu
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Fix: offline showed "site not reachable" (Android install issue)
+
+### Root cause
+Tonda reported that offline mode wasn't working at all — Chrome just showed "site not reachable" instead of the cached app. Most likely cause: the manifest only listed `can.svg` (an SVG icon) as the app icon. **Android Chrome's PWA installability check generally requires a real PNG icon (192px and 512px)** to generate a proper WebAPK and fully install the app; SVG-only icons can cause the "install" to silently degrade to a plain bookmark shortcut with no working offline shell behind it — which matches this exact symptom (app icon exists on the home screen, but offline = browser error page, not our cached app).
+
+### Fix
+- Generated real PNG icons (`public/icon-192.png`, `public/icon-512.png`, `public/icon-512-maskable.png`) from the existing `can.svg` artwork, rendered on an opaque dark background (transparent PNG icons get an ugly default white circle on Android).
+- `public/manifest.json` — icons array now points to the PNG files (`any` + a separate `maskable` variant) instead of the SVG.
+- `index.html` — `apple-touch-icon` also updated to the PNG.
+- `public/sw.js` — bumped `SHELL_CACHE` to `v2`, and now precaches `/`, `/index.html`, `/manifest.json`, and both main icons directly in the `install` event (`cache.addAll(...)`), instead of relying entirely on requests happening to pass through the fetch handler first. This makes the offline shell available right after the first successful install, not dependent on which routes happened to be visited first.
+
+### What Tonda needs to do to pick this up
+Since the previous "install" likely wasn't a real PWA install:
+1. Remove the current CanVault icon from the home screen.
+2. Open **canvault.vercel.app in Chrome** (not the old icon) while on wifi, and let it fully load.
+3. Use Chrome's menu → **"Install app"** (should now appear/work correctly with valid PNG icons) or "Add to Home screen".
+4. Open the freshly-installed icon once more while online, so the service worker has a chance to activate and precache.
+5. Then test offline (airplane mode).
+
+### Why this is low-risk
+- Only touched `manifest.json` icon references, `index.html`'s icon link, and `sw.js`'s cache-name/precache list — no app logic changed.
+- Bumping the cache name (`v1` → `v2`) means old/possibly-broken cached entries from the previous attempt are automatically cleared out by the existing `activate` handler (which deletes any cache not matching current names).
+
+### Files touched
+- `public/icon-192.png`, `public/icon-512.png`, `public/icon-512-maskable.png` — new
+- `public/manifest.json` — PNG icons instead of SVG
+- `index.html` — apple-touch-icon → PNG
+- `public/sw.js` — precache app shell on install, cache version bump
+- `CLAUDE.md` — this section
