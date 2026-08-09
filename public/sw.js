@@ -9,10 +9,21 @@
 //     cache fallback, so the app itself opens offline after first visit,
 //     but still picks up new deploys whenever a connection is available.
 
-const SHELL_CACHE = "canvault-shell-v1";
+const SHELL_CACHE = "canvault-shell-v2";
 const IMAGE_CACHE = "canvault-images-v1";
 
-self.addEventListener("install", () => {
+const PRECACHE_URLS = [
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll(PRECACHE_URLS)).catch(() => {})
+  );
   self.skipWaiting();
 });
 
