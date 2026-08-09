@@ -886,3 +886,26 @@ Tonda has CanVault installed as a PWA on Android Chrome and wanted to browse can
 - `index.html` — manifest link + PWA meta tags
 - `src/App.jsx` — `OfflineBadge` component + render call
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — "Sync now" button + "last synced" indicator
+
+### Feature: manual sync control, follow-up to offline support above
+Added a way to force a fresh sync on demand and see when data was last synced, since the earlier offline work synced automatically/silently.
+
+**Changed files:**
+- `src/offlineDb.js` — `cachedFetch` now also writes an IndexedDB `lastSync` timestamp (`Date.now()`) on every successful fresh fetch, not just on manual sync.
+- `src/db.js` — added `forceSync()` (fetches `cans`, `wishlist`, `pinned`, `tag_meta` in parallel, ignoring the wifi gate, and writes all four + `lastSync` to IndexedDB) and `getLastSyncTime()` (reads the `lastSync` key).
+- `src/App.jsx` — new self-contained `SyncStatus` component: shows "SYNCED: Xm ago" (bilingual) and a "🔄 SYNC NOW" button. On click, calls `db.forceSync()`; on success shows a checkmark then reloads the page after ~700ms so the freshly-synced data actually appears (simplest correct way to refresh without restructuring each page's own data-loading `useEffect`s). Shows "offline" inline if tapped while offline, "failed" if the network request errors. Rendered inside the existing mobile hamburger menu, above the admin sign-in section.
+
+### Why this is low-risk
+- `forceSync()` is purely additive — existing `getCans`/`getWishlist`/`getPinned`/`getTagMeta` and their wifi-gating logic are untouched.
+- `SyncStatus` reads/writes only its own local state plus the `lastSync` IndexedDB key; it doesn't touch `cans`/`wishes`/other app state directly, so it can't corrupt anything — worst case (sync fails) it just shows "failed" and last-known sync time stays as-is.
+- Validated `App.jsx` (babel + esbuild), `db.js`, `offlineDb.js` (esbuild) before pushing; verified pushed content byte-for-byte against local files after push.
+
+### Files touched
+- `src/offlineDb.js` — `cachedFetch` now stamps `lastSync`
+- `src/db.js` — `forceSync`, `getLastSyncTime`
+- `src/App.jsx` — `SyncStatus` component + render call in mobile menu
+- `CLAUDE.md` — this section
