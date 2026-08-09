@@ -941,3 +941,27 @@ Since the previous "install" likely wasn't a real PWA install:
 - `index.html` — apple-touch-icon → PNG
 - `public/sw.js` — precache app shell on install, cache version bump
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Fix: offline showed blank white screen (SW not controlling first load)
+
+### Root cause
+After the PNG-icon fix, offline went from "site not reachable" to a blank white screen — progress, but still broken. Reason: the page that triggers service worker **installation** is not yet **controlled** by that service worker (per spec, control only starts on the *next* navigation after activation). So that first load's own JS/CSS requests bypass the SW's fetch handler entirely and never get cached — only the precached `index.html` shell ends up in cache. Offline, you get the empty `<div id="root">` shell with no app JS behind it → blank page.
+
+### Fix
+- `src/main.jsx` — after registering the SW, if the page isn't controlled yet, listen for `controllerchange` and do a single automatic `window.location.reload()` once the new SW takes control (guarded by a `sessionStorage` flag so it only happens once per session, not a reload loop). This makes the *next* load happen under the SW's control, so its JS/CSS get captured by the fetch handler's cache-on-success logic — no manual double-open needed from Tonda.
+- `public/sw.js` — offline navigation fallback now also tries matching `/` if `/index.html` isn't found (previously only tried `/index.html`); bumped `SHELL_CACHE` to `v3` so the incomplete `v2` cache from before this fix gets cleared automatically via the existing `activate` cleanup.
+
+### What Tonda needs to do
+Just open canvault.vercel.app (or the installed icon) once more while online — it'll auto-reload itself in the background this time (one extra reload, easy to miss), and after that offline should show the real app instead of a blank page.
+
+### Why this is low-risk
+- `main.jsx` change only adds a conditional one-time reload gated on "not yet controlled by SW" — has zero effect on already-working, already-controlled sessions.
+- `sw.js` change only adds a second fallback cache key to try; doesn't change any existing caching strategy.
+- Validated both files with esbuild; verified byte-for-byte match on GitHub after push.
+
+### Files touched
+- `src/main.jsx` — auto-reload-once-on-first-control logic
+- `public/sw.js` — broader offline nav fallback, cache bumped to v3
+- `CLAUDE.md` — this section
