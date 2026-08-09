@@ -11,6 +11,7 @@
 
 const SHELL_CACHE = "canvault-shell-v4";
 const IMAGE_CACHE = "canvault-images-v2";
+const DEBUG_CACHE = "canvault-debug-log";
 
 const PRECACHE_URLS = [
   "/",
@@ -19,6 +20,33 @@ const PRECACHE_URLS = [
   "/icon-192.png",
   "/icon-512.png",
 ];
+
+// Records what happened to each request (cached / skipped / errored) into
+// its own cache entry, readable later without needing devtools — just
+// fetch this cache's "log" entry and parse the JSON. Keeps only the most
+// recent 60 entries.
+async function logEvent(entry) {
+  try {
+    const cache = await caches.open(DEBUG_CACHE);
+    const existing = await cache.match("log");
+    let arr = [];
+    if (existing) {
+      try {
+        arr = await existing.json();
+      } catch {
+        arr = [];
+      }
+    }
+    arr.push({ t: new Date().toISOString(), ...entry });
+    if (arr.length > 60) arr = arr.slice(-60);
+    await cache.put(
+      "log",
+      new Response(JSON.stringify(arr), { headers: { "Content-Type": "application/json" } })
+    );
+  } catch (e) {
+    // never let logging itself break anything
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -32,7 +60,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => k !== SHELL_CACHE && k !== IMAGE_CACHE)
+          .filter((k) => k !== SHELL_CACHE && k !== IMAGE_CACHE && k !== DEBUG_CACHE)
           .map((k) => caches.delete(k))
       )
     )
@@ -85,11 +113,25 @@ self.addEventListener("fetch", (event) => {
         // keeps working fine online, so nothing ever gets cached for
         // offline use even though everything looks fine when connected.
         if (res && res.status === 200) {
-          caches.open(SHELL_CACHE).then((cache) => cache.put(req, res.clone())).catch(() => {});
+          caches
+            .open(SHELL_CACHE)
+            .then((cache) => cache.put(req, res.clone()))
+            .then(() => logEvent({ url: url.pathname, status: res.status, cached: true }))
+            .catch((e) =>
+              logEvent({ url: url.pathname, status: res.status, cached: false, err: String(e) })
+            );
+        } else {
+          logEvent({
+            url: url.pathname,
+            status: res ? res.status : "no-response",
+            cached: false,
+            reason: "status-not-200",
+          });
         }
         return res;
       })
-      .catch(async () => {
+      .catch(async (e) => {
+        logEvent({ url: url.pathname, cached: false, reason: "fetch-threw", err: String(e) });
         const cache = await caches.open(SHELL_CACHE);
         const cached = await cache.match(req);
         if (cached) return cached;
