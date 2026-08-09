@@ -986,3 +986,29 @@ The previous fix's reload-once logic was gated behind `if (!navigator.serviceWor
 - `src/main.jsx` — removed incorrect controller-check guard
 - `vercel.json` — cache headers for `/sw.js`, `/manifest.json`
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Diagnostic overlay for offline blank-screen debugging
+
+### Context
+Tonda sent `chrome://serviceworker-internals` screenshots showing the CanVault service worker (Registration ID 520, script `sw.js`, Version ID 1077) as `ACTIVATED` / `RUNNING` with a working `NOT_SKIPPABLE` fetch handler — so the SW registration itself is healthy. That rules out the "stuck on old broken SW" theory and means the blank screen is failing somewhere *after* that (bundle not in cache, a runtime JS error, etc.), which isn't visible without a real browser console — and Tonda doesn't have easy USB-debugging access from the phone alone.
+
+### Fix: self-diagnosing blank screen
+- `index.html` — added a plain inline `<script>` (no `type="module"`, no dependency on the built React bundle) that:
+  - Waits 3s after `load`, then checks if `#root` has any children (i.e. did React actually mount?).
+  - If not, renders a plain-JS diagnostic panel directly into the page showing: `navigator.onLine`, whether a service worker controller is present, whether the Cache API is available, the list of cache names, and entry counts (+ a few example cached paths) per cache.
+  - This works even when the React bundle itself fails to load offline, since it never depends on `/src/main.jsx` or any bundled code — pure vanilla JS inline in the HTML that's already known to load fine offline (per earlier fix).
+  - Does nothing (no-op) if the app mounts normally — purely a fallback, zero effect on normal operation.
+
+### Why this is low-risk
+- Only touches `index.html`; doesn't change `sw.js`, `main.jsx`, or any app logic.
+- Guarded so it only ever renders if `#root` is still empty 3s after load — can't interfere with a working app.
+- Validated the inline script with esbuild before pushing; verified byte-for-byte match on GitHub after push.
+
+### Next step
+Waiting on Tonda to reproduce the blank offline screen again — this time it should show actual diagnostic text (cache names + entry counts) instead of nothing, which will pinpoint whether the shell cache is empty, missing the JS bundle specifically, or something else entirely.
+
+### Files touched
+- `index.html` — diagnostic overlay script
+- `CLAUDE.md` — this section
