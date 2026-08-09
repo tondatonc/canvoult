@@ -965,3 +965,24 @@ Just open canvault.vercel.app (or the installed icon) once more while online —
 - `src/main.jsx` — auto-reload-once-on-first-control logic
 - `public/sw.js` — broader offline nav fallback, cache bumped to v3
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Fix: found actual bug in reload-once logic + sw.js caching gotcha
+
+### Root cause of continued blank screen
+The previous fix's reload-once logic was gated behind `if (!navigator.serviceWorker.controller)` — but Tonda already had an earlier (broken, pre-PNG-icon) service worker installed and controlling the page from the very first attempt. That meant `navigator.serviceWorker.controller` was already truthy on every subsequent visit, so the guard evaluated false and the `controllerchange` listener never got attached — the reload-once fix silently never ran for him specifically, even though it would have worked correctly for a genuinely fresh install.
+
+### Fix
+- `src/main.jsx` — removed the `if (!navigator.serviceWorker.controller)` guard entirely. Now **always** listens for `controllerchange` after registering (still guarded by the `sessionStorage` flag so it only reloads once per session). This correctly handles both a brand-new install AND an update replacing an old/broken SW version — both cases fire `controllerchange` when the new SW's `clients.claim()` takes over.
+- `vercel.json` — added explicit `Cache-Control: public, max-age=0, must-revalidate` headers for `/sw.js` and `/manifest.json`. Without this, `/sw.js` can get cached (by the browser or Vercel's CDN) for longer than intended, meaning updated service worker code might not actually reach the device promptly — a well-known Vercel + service worker gotcha. Also added `Service-Worker-Allowed: /` for clarity on scope.
+
+### Why this is low-risk
+- `main.jsx`: removing the guard only widens *when* the one-time reload listener attaches; the sessionStorage dedupe still fully prevents reload loops.
+- `vercel.json`: purely additive `headers` block; existing `rewrites` behavior (SPA fallback, `/api/*` passthrough) is untouched.
+- Validated `main.jsx` (esbuild) and `vercel.json` (JSON parse) before pushing; verified byte-for-byte match after push.
+
+### Files touched
+- `src/main.jsx` — removed incorrect controller-check guard
+- `vercel.json` — cache headers for `/sw.js`, `/manifest.json`
+- `CLAUDE.md` — this section
