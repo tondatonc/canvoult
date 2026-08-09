@@ -1,4 +1,6 @@
 // db.js — Supabase database layer for CanVault
+import { cachedFetch } from "./offlineDb.js";
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -28,9 +30,11 @@ function base(table) {
 // ─── CANS ────────────────────────────────────────────────────────────────────
 
 export async function getCans() {
-  return request(`${base("cans")}?order=added_at.desc&select=*`, {
-    headers: headers(),
-  });
+  return cachedFetch("cans", () =>
+    request(`${base("cans")}?order=added_at.desc&select=*`, {
+      headers: headers(),
+    })
+  );
 }
 
 export async function upsertCan(can) {
@@ -61,9 +65,11 @@ export async function deleteCan(id) {
 // ─── WISHLIST ─────────────────────────────────────────────────────────────────
 
 export async function getWishlist() {
-  return request(`${base("wishlist")}?order=added_at.desc&select=*`, {
-    headers: headers(),
-  });
+  return cachedFetch("wishlist", () =>
+    request(`${base("wishlist")}?order=added_at.desc&select=*`, {
+      headers: headers(),
+    })
+  );
 }
 
 export async function upsertWish(wish) {
@@ -134,9 +140,11 @@ export async function updateWallPhoto(photo) {
 // type = 'can' | 'wish'
 
 export async function getPinned() {
-  const rows = await request(`${base("pinned")}?select=can_id,type`, {
-    headers: headers(),
-  });
+  const rows = await cachedFetch("pinned", () =>
+    request(`${base("pinned")}?select=can_id,type`, {
+      headers: headers(),
+    })
+  );
   return rows || [];
 }
 
@@ -162,9 +170,11 @@ export async function unpinItem(id, type = "can") {
 // visitor (including signed-out mobile users), not just the device that set them.
 
 export async function getTagMeta() {
-  const rows = await request(`${base("tag_meta")}?id=eq.global&select=colors,roles`, {
-    headers: headers(),
-  });
+  const rows = await cachedFetch("tag_meta", () =>
+    request(`${base("tag_meta")}?id=eq.global&select=colors,roles`, {
+      headers: headers(),
+    })
+  );
   if (!rows || rows.length === 0) return { colors: {}, roles: {} };
   return { colors: rows[0].colors || {}, roles: rows[0].roles || {} };
 }
