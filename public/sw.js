@@ -9,7 +9,7 @@
 //     cache fallback, so the app itself opens offline after first visit,
 //     but still picks up new deploys whenever a connection is available.
 
-const SHELL_CACHE = "canvault-shell-v2";
+const SHELL_CACHE = "canvault-shell-v3";
 const IMAGE_CACHE = "canvault-images-v1";
 
 const PRECACHE_URLS = [
@@ -88,7 +88,7 @@ self.addEventListener("fetch", (event) => {
         const cached = await cache.match(req);
         if (cached) return cached;
         if (req.mode === "navigate") {
-          const shell = await cache.match("/index.html");
+          const shell = (await cache.match("/index.html")) || (await cache.match("/"));
           if (shell) return shell;
         }
         return Response.error();
