@@ -15,52 +15,60 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Diagnostic fallback: if the React app hasn't mounted anything into
-      // #root a few seconds after load, something failed silently (most
-      // likely offline + a missing cached asset). This is a plain inline
-      // script with no dependency on the built JS bundle, so it still runs
-      // even when that bundle itself fails to load — showing real
-      // diagnostic info instead of a blank white screen.
+      // Diagnostic overlay — two ways to trigger:
+      //  1. Automatic: if the React app hasn't mounted anything into #root
+      //     a few seconds after load, something failed silently (most
+      //     likely offline + a missing cached asset).
+      //  2. Manual: visit the site with ?debug=1 to see the same info even
+      //     when the app loads fine (e.g. to inspect the service worker's
+      //     request log while online).
+      // This is a plain inline script with no dependency on the built JS
+      // bundle, so it still runs even when that bundle itself fails to load.
       (function () {
-        function render(lines) {
+        function render(lines, opts) {
+          opts = opts || {};
           var root = document.getElementById("root");
-          if (root && root.children.length > 0) return; // app mounted fine, do nothing
+          if (!opts.force && root && root.children.length > 0) return; // app mounted fine, do nothing
           var el = document.createElement("div");
-          el.style.cssText = "font-family:sans-serif;padding:24px;color:#FFE8D0;background:#1a0505;min-height:100vh;box-sizing:border-box;";
+          el.style.cssText =
+            (opts.force
+              ? "position:fixed;bottom:0;left:0;right:0;max-height:60vh;overflow:auto;z-index:99999;"
+              : "min-height:100vh;") +
+            "font-family:sans-serif;padding:20px;color:#FFE8D0;background:#1a0505;box-sizing:border-box;border-top:3px solid #C8102E;";
           el.innerHTML =
-            '<h2 style="margin-top:0;">CanVault couldn\'t load</h2>' +
-            '<p style="color:#FFB0A0;">Diagnostic info (send a screenshot of this to Claude):</p>' +
-            '<pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;color:#FFD0C0;background:#000;padding:12px;border-radius:8px;">' +
+            (opts.force ? "" : '<h2 style="margin-top:0;">CanVault couldn\'t load</h2>') +
+            '<p style="color:#FFB0A0;margin-top:0;">Diagnostic info (send a screenshot of this to Claude):</p>' +
+            '<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;color:#FFD0C0;background:#000;padding:12px;border-radius:8px;">' +
             lines.join("\n") +
             "</pre>" +
             '<button onclick="location.reload()" style="margin-top:12px;padding:10px 16px;border-radius:8px;border:2px solid #FFD0C055;background:transparent;color:#FFE8D0;font-size:14px;">Reload</button>';
           document.body.appendChild(el);
         }
 
-        window.addEventListener("load", function () {
-          setTimeout(function () {
-            var root = document.getElementById("root");
-            if (root && root.children.length > 0) return;
+        function gatherAndRender(opts) {
+          var lines = [];
+          lines.push("online: " + navigator.onLine);
+          lines.push(
+            "sw controller: " +
+              !!(navigator.serviceWorker && navigator.serviceWorker.controller)
+          );
+          lines.push("cache API available: " + ("caches" in window));
 
-            var lines = [];
-            lines.push("online: " + navigator.onLine);
-            lines.push(
-              "sw controller: " +
-                !!(navigator.serviceWorker && navigator.serviceWorker.controller)
-            );
-            lines.push("cache API available: " + ("caches" in window));
+          if (!("caches" in window)) {
+            render(lines, opts);
+            return;
+          }
 
-            if (!("caches" in window)) {
-              render(lines);
-              return;
-            }
-
-            caches
-              .keys()
-              .then(function (names) {
-                lines.push("caches: " + JSON.stringify(names));
-                return Promise.all(
-                  names.map(function (n) {
+          caches
+            .keys()
+            .then(function (names) {
+              lines.push("caches: " + JSON.stringify(names));
+              return Promise.all(
+                names
+                  .filter(function (n) {
+                    return n !== "canvault-debug-log";
+                  })
+                  .map(function (n) {
                     return caches
                       .open(n)
                       .then(function (c) {
@@ -75,7 +83,7 @@
                           (keys.length
                             ? " (e.g. " +
                               keys
-                                .slice(0, 3)
+                                .slice(0, 5)
                                 .map(function (k) {
                                   return new URL(k.url).pathname;
                                 })
@@ -85,16 +93,43 @@
                         );
                       });
                   })
-                );
-              })
-              .then(function (cacheLines) {
-                if (cacheLines) lines = lines.concat(cacheLines);
-                render(lines);
-              })
-              .catch(function (e) {
-                lines.push("caches error: " + e);
-                render(lines);
+              );
+            })
+            .then(function (cacheLines) {
+              if (cacheLines) lines = lines.concat(cacheLines);
+              // Also pull the service worker's own request log, if present.
+              return caches.open("canvault-debug-log").then(function (c) {
+                return c.match("log");
               });
+            })
+            .then(function (logRes) {
+              if (logRes) {
+                return logRes.json().then(function (arr) {
+                  lines.push("--- sw request log (most recent " + arr.length + ") ---");
+                  arr.forEach(function (e) {
+                    lines.push(JSON.stringify(e));
+                  });
+                  render(lines, opts);
+                });
+              }
+              lines.push("sw request log: (none yet)");
+              render(lines, opts);
+            })
+            .catch(function (e) {
+              lines.push("diagnostic error: " + e);
+              render(lines, opts);
+            });
+        }
+
+        if (location.search.indexOf("debug=1") !== -1) {
+          window.addEventListener("load", function () {
+            gatherAndRender({ force: true });
+          });
+        }
+
+        window.addEventListener("load", function () {
+          setTimeout(function () {
+            gatherAndRender({ force: false });
           }, 3000);
         });
       })();
