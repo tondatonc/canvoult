@@ -9,6 +9,30 @@ import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countrie
 const _PH = "c29kYWNhbjEyMw==";
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
 
+// Small fixed-position pill that shows up only when the browser is offline,
+// so it's obvious the data on screen is from local cache. Self-contained —
+// doesn't read or write any app state, so it can't affect anything else.
+function OfflineBadge({ cz }) {
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+  if (online) return null;
+  return (
+    <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 999, background: "#2A0A0A", color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.08em", padding: "8px 16px", borderRadius: 999, boxShadow: "0 4px 16px #00000055", display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8102E" }} />
+      {cz ? "OFFLINE — ZOBRAZENA ULOŽENÁ DATA" : "OFFLINE — SHOWING SAVED DATA"}
+    </div>
+  );
+}
+
 function FlagImg({ iso2, name }) {
   if (!iso2) return null;
   return <img src={flagUrl(iso2)} alt={name} title={name} style={{ width: 20, height: 15, borderRadius: 2, verticalAlign: "middle", marginRight: 5, flexShrink: 0, boxShadow: "0 1px 3px #00000033" }} />;
@@ -3802,6 +3826,7 @@ export default function App() {
       </div>
 
       {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
+      <OfflineBadge cz={cz} />
     </div>
   );
 }
