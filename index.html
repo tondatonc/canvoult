@@ -14,5 +14,90 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Diagnostic fallback: if the React app hasn't mounted anything into
+      // #root a few seconds after load, something failed silently (most
+      // likely offline + a missing cached asset). This is a plain inline
+      // script with no dependency on the built JS bundle, so it still runs
+      // even when that bundle itself fails to load — showing real
+      // diagnostic info instead of a blank white screen.
+      (function () {
+        function render(lines) {
+          var root = document.getElementById("root");
+          if (root && root.children.length > 0) return; // app mounted fine, do nothing
+          var el = document.createElement("div");
+          el.style.cssText = "font-family:sans-serif;padding:24px;color:#FFE8D0;background:#1a0505;min-height:100vh;box-sizing:border-box;";
+          el.innerHTML =
+            '<h2 style="margin-top:0;">CanVault couldn\'t load</h2>' +
+            '<p style="color:#FFB0A0;">Diagnostic info (send a screenshot of this to Claude):</p>' +
+            '<pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;color:#FFD0C0;background:#000;padding:12px;border-radius:8px;">' +
+            lines.join("\n") +
+            "</pre>" +
+            '<button onclick="location.reload()" style="margin-top:12px;padding:10px 16px;border-radius:8px;border:2px solid #FFD0C055;background:transparent;color:#FFE8D0;font-size:14px;">Reload</button>';
+          document.body.appendChild(el);
+        }
+
+        window.addEventListener("load", function () {
+          setTimeout(function () {
+            var root = document.getElementById("root");
+            if (root && root.children.length > 0) return;
+
+            var lines = [];
+            lines.push("online: " + navigator.onLine);
+            lines.push(
+              "sw controller: " +
+                !!(navigator.serviceWorker && navigator.serviceWorker.controller)
+            );
+            lines.push("cache API available: " + ("caches" in window));
+
+            if (!("caches" in window)) {
+              render(lines);
+              return;
+            }
+
+            caches
+              .keys()
+              .then(function (names) {
+                lines.push("caches: " + JSON.stringify(names));
+                return Promise.all(
+                  names.map(function (n) {
+                    return caches
+                      .open(n)
+                      .then(function (c) {
+                        return c.keys();
+                      })
+                      .then(function (keys) {
+                        return (
+                          n +
+                          ": " +
+                          keys.length +
+                          " entries" +
+                          (keys.length
+                            ? " (e.g. " +
+                              keys
+                                .slice(0, 3)
+                                .map(function (k) {
+                                  return new URL(k.url).pathname;
+                                })
+                                .join(", ") +
+                              ")"
+                            : "")
+                        );
+                      });
+                  })
+                );
+              })
+              .then(function (cacheLines) {
+                if (cacheLines) lines = lines.concat(cacheLines);
+                render(lines);
+              })
+              .catch(function (e) {
+                lines.push("caches error: " + e);
+                render(lines);
+              });
+          }, 3000);
+        });
+      })();
+    </script>
   </body>
 </html>
