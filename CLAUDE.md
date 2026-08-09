@@ -1012,3 +1012,29 @@ Waiting on Tonda to reproduce the blank offline screen again — this time it sh
 ### Files touched
 - `index.html` — diagnostic overlay script
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — ROOT CAUSE FOUND & FIXED: offline blank screen (206 Partial Content)
+
+### The actual bug
+Tonda's diagnostic overlay (added in the previous session) showed the real picture: online, the app loads and works completely normally. Offline, `canvault-shell-v3` had exactly the 5 install-time precached files and *nothing else* — the actual built JS/CSS bundle had never been cached, despite loading successfully every time online.
+
+**Root cause:** `res.ok` is `true` for `206 Partial Content` responses, not just `200`. Some of Vercel's responses for the JS bundle come back as 206 (partial content, e.g. due to range requests). The Cache API's `cache.put()` **throws a `TypeError` if given a 206 response** — this is a documented Cache API restriction (whole responses only). Our fetch handler's caching call was fire-and-forget (`caches.open(...).then(cache => cache.put(...))`, not awaited, no `.catch`), so this failure was completely silent: the actual network response still got returned to the page fine (app works online), but the cache write threw and quietly failed every single time for the bundle — meaning nothing beyond the install-time precache list ever made it into `canvault-shell-v3`. Offline, the app shell (empty `#root`) loaded from cache, but the JS that mounts the React app was never available, hence the blank/diagnostic screen.
+
+### Fix
+- `public/sw.js`:
+  - Changed both cache-write conditions from `res.ok` to `res.status === 200` (excludes 206 and any other non-200-but-"ok" status) in the image branch and the shell branch.
+  - Added `.catch(() => {})` on both `cache.put(...)` calls so any *other* future edge case (e.g. a `Vary: *` header, which also makes `cache.put()` throw) fails silently instead of producing an unhandled rejection — but no longer silently *drops* normal 200 responses, since those are the common case and will now cache correctly.
+  - Bumped `SHELL_CACHE` to `v4` and `IMAGE_CACHE` to `v2` so old incomplete caches are cleared via the existing `activate` cleanup, and the fixed logic gets a clean slate to populate correctly.
+
+### Why this is low-risk
+- Purely a stricter condition on an already-existing, already-intended cache-write path (200 vs "ok") — no new logic, no behavior change for the network response itself (still always returned to the page regardless of caching outcome).
+- Validated with esbuild before push; verified byte-for-byte match on GitHub after.
+
+### Verification needed
+Ask Tonda to: reload once online (repopulates the now-fixed shell cache with the real JS/CSS bundle), then go offline and reload again — this should be the actual fix, assuming 206 responses were indeed the cause. If still broken, the diagnostic overlay (`index.html`) will again show exactly what's missing from the cache, since `canvault-shell-v4` entry count should now be well beyond 5 if the fix worked.
+
+### Files touched
+- `public/sw.js` — cache only status===200, `.catch` on cache writes, cache version bump
+- `CLAUDE.md` — this section
