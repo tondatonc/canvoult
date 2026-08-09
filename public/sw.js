@@ -9,8 +9,8 @@
 //     cache fallback, so the app itself opens offline after first visit,
 //     but still picks up new deploys whenever a connection is available.
 
-const SHELL_CACHE = "canvault-shell-v3";
-const IMAGE_CACHE = "canvault-images-v1";
+const SHELL_CACHE = "canvault-shell-v4";
+const IMAGE_CACHE = "canvault-images-v2";
 
 const PRECACHE_URLS = [
   "/",
@@ -64,7 +64,7 @@ self.addEventListener("fetch", (event) => {
         if (cached) return cached;
         try {
           const res = await fetch(req);
-          if (res && res.ok) cache.put(req, res.clone());
+          if (res && res.status === 200) cache.put(req, res.clone()).catch(() => {});
           return res;
         } catch (err) {
           return cached || Response.error();
@@ -78,8 +78,14 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        if (res && res.ok) {
-          caches.open(SHELL_CACHE).then((cache) => cache.put(req, res.clone()));
+        // IMPORTANT: res.ok is true for 206 Partial Content too, but the
+        // Cache API throws if you try to store a 206 response. Only cache
+        // clean, full 200 responses — otherwise this write silently fails
+        // (fire-and-forget, unhandled rejection) while the page itself
+        // keeps working fine online, so nothing ever gets cached for
+        // offline use even though everything looks fine when connected.
+        if (res && res.status === 200) {
+          caches.open(SHELL_CACHE).then((cache) => cache.put(req, res.clone())).catch(() => {});
         }
         return res;
       })
