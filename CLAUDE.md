@@ -1038,3 +1038,26 @@ Ask Tonda to: reload once online (repopulates the now-fixed shell cache with the
 ### Files touched
 - `public/sw.js` — cache only status===200, `.catch` on cache writes, cache version bump
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Still broken after 200-status fix: added persistent SW request log
+
+### Context
+The 206-Partial-Content fix (previous section) did NOT resolve the issue. Confirmed via a completely fresh Incognito session (no possible leftover state): `canvault-shell-v4` still only has the 5 install-time precached entries, even after a confirmed SW-controlled load that works fine online. So the shell branch's runtime caching is failing for some *other* reason — status isn't the (only) issue.
+
+Since there's no console access on the device, guessing further isn't productive. Instead:
+
+### Added: persistent, inspectable request log
+- `public/sw.js` — new `logEvent()` helper writes every shell-branch fetch outcome (url, status, whether it got cached, or the exact error/reason it didn't) into a dedicated `canvault-debug-log` cache entry (`"log"`, JSON array, capped at last 60 entries). This survives independently of whether the app itself loads.
+- `index.html` — diagnostic overlay rewritten:
+  - Still auto-triggers if `#root` is empty 3s after load (unchanged behavior).
+  - **New:** visiting `https://canvault.vercel.app/?debug=1` now shows the same diagnostic panel (cache names/counts + full sw.js request log) as a fixed bottom overlay **even when the app loads and works fine** — doesn't block or hide the running app, just overlays diagnostic info at the bottom. This lets us inspect exactly what the service worker did/attempted during a normal online load, without needing devtools.
+
+### Next step
+Ask Tonda to visit `canvault.vercel.app/?debug=1` once online (after the app's had a chance to load normally), screenshot the "sw request log" section at the bottom of the diagnostic panel. Each log line will show either `"cached":true` or a `"reason"`/`"err"` field explaining exactly why a given URL wasn't cached — this should finally reveal the real mechanism (e.g. still-206 responses somehow, a thrown exception, requests never reaching the fetch handler at all — which would show as those URLs being completely absent from the log — or something else).
+
+### Files touched
+- `public/sw.js` — `logEvent()`, log written on every shell-branch outcome, `canvault-debug-log` cache excluded from version cleanup
+- `index.html` — `?debug=1` manual trigger, reads and displays the sw.js request log
+- `CLAUDE.md` — this section
