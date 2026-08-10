@@ -1105,3 +1105,37 @@ Waiting on Tonda to confirm a real offline test now that the shell cache is actu
 ### Files touched
 - `public/sw.js` — cache opaque responses too (Google Fonts CSS)
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — Offline mode confirmed working; made it opt-in (default OFF)
+
+### Confirmed working
+Tonda confirmed offline mode works end-to-end now (after airplane-mode-with-wifi-still-on confusion was cleared up) — just takes a moment to load from cache. The clone-race fix from the previous session was the real, final fix.
+
+### Made opt-in
+Since other people use CanVault too, Tonda asked to make offline mode default-off so it doesn't quietly use storage on everyone else's devices.
+
+- `src/offlineDb.js`:
+  - `isOfflineEnabled()` / `setOfflineEnabled(bool)` — reads/writes a `cv_offline_enabled` localStorage flag (`"1"`/anything else = off). Defaults to **off** for anyone who hasn't explicitly turned it on.
+  - `setupOffline()` — registers the service worker + the reload-once-on-first-control logic (previously inline in `main.jsx`). Only called when the flag is on.
+  - `teardownOffline()` — unregisters all service worker registrations, deletes every `canvault-*` Cache Storage entry, and deletes the whole `canvault-offline` IndexedDB database. Called whenever the flag is off, so turning it off actually frees the storage instead of just hiding the UI.
+  - `cachedFetch()` now short-circuits to a plain `fetchFn()` (no IndexedDB read/write at all) when offline mode is disabled — zero storage footprint for anyone who hasn't opted in.
+- `src/main.jsx` — on load, calls `setupOffline()` if enabled, otherwise `teardownOffline()` (so even leftover state from before the toggle existed gets cleaned up automatically for everyone who hasn't turned it on).
+- `src/App.jsx`:
+  - New `OfflineSettings` component: a toggle switch ("OFFLINE MODE" / "REŽIM OFFLINE") in the mobile menu, above where `SyncStatus` used to render directly. Toggling calls `setupOffline()`/`teardownOffline()`, flips the localStorage flag, and reloads the page after a short delay so the new state takes full effect.
+  - `SyncStatus` (last-synced + Sync Now button) now only renders *inside* `OfflineSettings` when the toggle is on — doesn't make sense to show sync status for a feature that's off.
+  - `OfflineBadge` now also checks `isOfflineEnabled()` and renders nothing if it's off — no point telling someone "showing saved data" when there isn't any.
+
+### Why this is low-risk
+- Purely a gating condition around already-existing, already-tested logic — no new caching/service-worker behavior introduced.
+- Validated `App.jsx` (babel + esbuild), `main.jsx`, `offlineDb.js` (esbuild) before pushing; verified byte-for-byte match after push.
+
+### Current default state
+Fresh visitors (and anyone who never opts in) get **zero** service worker registration, zero Cache Storage usage, zero IndexedDB usage — full previous (pre-offline-work) app behavior. Offline mode is fully functional but must be explicitly turned on via the menu toggle.
+
+### Files touched
+- `src/offlineDb.js` — opt-in flag + setup/teardown helpers, `cachedFetch` gated
+- `src/main.jsx` — conditional setup/teardown on load
+- `src/App.jsx` — `OfflineSettings` toggle component, `OfflineBadge` gated
+- `CLAUDE.md` — this section
