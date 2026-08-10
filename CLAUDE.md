@@ -1139,3 +1139,20 @@ Fresh visitors (and anyone who never opts in) get **zero** service worker regist
 - `src/main.jsx` — conditional setup/teardown on load
 - `src/App.jsx` — `OfflineSettings` toggle component, `OfflineBadge` gated
 - `CLAUDE.md` — this section
+
+
+## 2026-08-10 — Fixed app icons (can too small)
+
+**Issue:** All three PWA icons (`icon-192.png`, `icon-512.png`, `icon-512-maskable.png`) rendered the can graphic far too small relative to the canvas — lots of dead background space, can only ~15-20% of icon width. Confirmed visually via user screenshot of installed home screen icon.
+
+**Fix:** Regenerated all three icons from scratch with PIL (no SVG converter available in sandbox — drew the cylinder can shape directly: body rect + top/bottom ellipses + highlight stripe, matching `public/can.svg` styling).
+- `icon-192.png` / `icon-512.png` (purpose "any"): dark rounded-square backdrop, can body now ~50% of canvas height.
+- `icon-512-maskable.png` (purpose "maskable"): full-bleed dark background (`#1a0a0a`), can sized to sit safely within Android's circular safe-zone crop — verified by simulating a circle mask crop locally before pushing.
+
+Pushed via GitHub Contents API, verified via `api.github.com` (not raw CDN) after push. Script used: `make_icons.py` (not committed to repo, lives in session sandbox only — recreate if icon needs further tweaking).
+
+### Files touched
+- `public/icon-192.png`
+- `public/icon-512.png`
+- `public/icon-512-maskable.png`
+- `CLAUDE.md` — this section
