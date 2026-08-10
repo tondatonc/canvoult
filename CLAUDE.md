@@ -1088,3 +1088,20 @@ Ask Tonda to load `canvault.vercel.app/?debug=1` once online — the sw request 
 ### Files touched
 - `public/sw.js` — synchronous `res.clone()`, cache bumped to v5
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — CONFIRMED FIXED: real request log shows caching working
+
+### Confirmation
+Tonda's `?debug=1` screenshot confirms the clone-race fix worked: log entries from `06:49:17` onward show `"cached":true` for `/`, `/assets/index-DSRva4cM.js`, `/manifest.json`, and font files. `canvault-shell-v5` grew from 5 to 12 real entries. The app's actual JS bundle is now being cached successfully for the first time throughout this entire debugging arc.
+
+### Small follow-up fix
+- `public/sw.js` — the Google Fonts CSS request (`/css2?...`) was still being skipped (`status: 0`, reason `status-not-200`). That's because it's a cross-origin no-cors request, which always reports as an **opaque** response with `status: 0` — but opaque responses ARE legitimately cacheable via the Cache API (the browser can still re-serve them correctly even though JS can't read their contents). Changed the cache condition to `res.status === 200 || res.type === "opaque"` so this now gets cached too, ensuring fonts render correctly offline (previously: font *files* were caching fine, but the CSS telling the browser which font-face to use wasn't, which could cause fallback-font rendering offline).
+
+### Status: offline support should now be genuinely working
+Waiting on Tonda to confirm a real offline test now that the shell cache is actually populating correctly.
+
+### Files touched
+- `public/sw.js` — cache opaque responses too (Google Fonts CSS)
+- `CLAUDE.md` — this section
