@@ -1156,3 +1156,19 @@ Pushed via GitHub Contents API, verified via `api.github.com` (not raw CDN) afte
 - `public/icon-512.png`
 - `public/icon-512-maskable.png`
 - `CLAUDE.md` — this section
+
+
+## 2026-08-10 — Icon fix, take 2: render from actual can.svg (not hand-redrawn)
+
+User correctly pushed back on the first icon fix — I'd hand-redrawn the can shape in PIL instead of using the existing `public/can.svg`. Installed `cairosvg` (pip, network allows pypi.org) and re-rendered all three icons directly from `can.svg` for exact fidelity to the app's real can graphic.
+
+- `icon-192.png` / `icon-512.png`: can.svg rendered at ~86% of canvas on a dark rounded-square backdrop (`#1a0a0a`).
+- `icon-512-maskable.png`: can.svg rendered at ~62% of canvas, full-bleed dark background, verified to survive a simulated circular crop with margin to spare.
+
+**New learning:** `cairosvg` is installable via pip in the sandbox (pypi.org/files.pythonhosted.org are on the allowed network list) — use it going forward instead of hand-redrawing shapes when a source SVG already exists.
+
+### Files touched
+- `public/icon-192.png`
+- `public/icon-512.png`
+- `public/icon-512-maskable.png`
+- `CLAUDE.md` — this section
