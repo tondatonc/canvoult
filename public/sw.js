@@ -120,7 +120,7 @@ self.addEventListener("fetch", (event) => {
         // By the time the delayed clone() runs, the body is already
         // "used" and clone() throws — silently, every single time, for
         // every asset. Cloning eagerly here avoids the race entirely.
-        if (res && res.status === 200) {
+        if (res && (res.status === 200 || res.type === "opaque")) {
           const resClone = res.clone();
           caches
             .open(SHELL_CACHE)
