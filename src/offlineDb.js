@@ -65,6 +65,72 @@ export function isOnline() {
   return typeof navigator === "undefined" ? true : navigator.onLine;
 }
 
+// ─── OPT-IN TOGGLE ──────────────────────────────────────────────────────────
+// Offline mode is OFF by default so it doesn't quietly use storage on every
+// visitor's device — only people who explicitly turn it on (via the toggle
+// in the menu) get a service worker, Cache Storage entries, or IndexedDB
+// data at all.
+const OFFLINE_ENABLED_KEY = "cv_offline_enabled";
+
+export function isOfflineEnabled() {
+  try {
+    return localStorage.getItem(OFFLINE_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setOfflineEnabled(value) {
+  try {
+    localStorage.setItem(OFFLINE_ENABLED_KEY, value ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
+// Registers the service worker (with the one-time reload-on-first-control
+// behavior so the app shell actually gets cached). Only ever called when
+// the user has explicitly turned offline mode on.
+export function setupOffline() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (sessionStorage.getItem("cv_sw_reloaded")) return;
+    sessionStorage.setItem("cv_sw_reloaded", "1");
+    window.location.reload();
+  });
+}
+
+// Undoes everything offline-related: unregisters the service worker,
+// deletes all canvault-* Cache Storage entries, and deletes the whole
+// IndexedDB database — so turning offline mode off actually frees the
+// storage instead of just hiding the UI for it.
+export async function teardownOffline() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if ("caches" in window) {
+      const names = await caches.keys();
+      await Promise.all(
+        names.filter((n) => n.startsWith("canvault-")).map((n) => caches.delete(n))
+      );
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (typeof indexedDB !== "undefined") indexedDB.deleteDatabase(DB_NAME);
+  } catch {
+    // ignore
+  }
+}
+
 // Wraps a network-fetching function with an offline/wifi-aware cache.
 // - Offline entirely: always serve cache (throws only if nothing cached yet).
 // - Online but on cellular: serve cache if we have it (saves data); if the
@@ -72,6 +138,10 @@ export function isOnline() {
 // - Online on wifi (or platform where wifi can't be detected): fetch fresh
 //   and refresh the cache for next time offline/cellular.
 export async function cachedFetch(key, fetchFn) {
+  if (!isOfflineEnabled()) {
+    return fetchFn();
+  }
+
   if (!isOnline()) {
     const cached = await idbGet(key);
     if (cached !== null) return cached;
