@@ -9,7 +9,7 @@
 //     cache fallback, so the app itself opens offline after first visit,
 //     but still picks up new deploys whenever a connection is available.
 
-const SHELL_CACHE = "canvault-shell-v4";
+const SHELL_CACHE = "canvault-shell-v5";
 const IMAGE_CACHE = "canvault-images-v2";
 const DEBUG_CACHE = "canvault-debug-log";
 
@@ -108,14 +108,23 @@ self.addEventListener("fetch", (event) => {
       .then((res) => {
         // IMPORTANT: res.ok is true for 206 Partial Content too, but the
         // Cache API throws if you try to store a 206 response. Only cache
-        // clean, full 200 responses — otherwise this write silently fails
-        // (fire-and-forget, unhandled rejection) while the page itself
-        // keeps working fine online, so nothing ever gets cached for
-        // offline use even though everything looks fine when connected.
+        // clean, full 200 responses.
+        //
+        // IMPORTANT #2 (the actual bug): res.clone() MUST be called
+        // synchronously, the instant this response is received — before
+        // any other async step. caches.open() is itself async, so doing
+        // `caches.open(...).then(cache => cache.put(req, res.clone()))`
+        // delays the clone() call until after `return res` below has
+        // already handed the (unc­loned) response back to the browser,
+        // which immediately starts reading its body to serve the page.
+        // By the time the delayed clone() runs, the body is already
+        // "used" and clone() throws — silently, every single time, for
+        // every asset. Cloning eagerly here avoids the race entirely.
         if (res && res.status === 200) {
+          const resClone = res.clone();
           caches
             .open(SHELL_CACHE)
-            .then((cache) => cache.put(req, res.clone()))
+            .then((cache) => cache.put(req, resClone))
             .then(() => logEvent({ url: url.pathname, status: res.status, cached: true }))
             .catch((e) =>
               logEvent({ url: url.pathname, status: res.status, cached: false, err: String(e) })
