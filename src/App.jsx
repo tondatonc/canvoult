@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
+import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline } from "./offlineDb.js";
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
@@ -15,6 +16,57 @@ function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } 
 // On success it reloads the page so the freshly-synced data actually shows
 // up in whichever view is open (simplest way to guarantee correctness
 // without restructuring how each page loads its own data).
+// Offline mode toggle — OFF by default so it doesn't use any storage on
+// other people's devices. Turning it on registers the service worker and
+// starts caching; turning it off unregisters everything and wipes the
+// cache/IndexedDB so it doesn't linger. Wraps SyncStatus, which only
+// renders (and only makes sense) while offline mode is on.
+function OfflineSettings({ cz }) {
+  const [enabled, setEnabled] = useState(() => isOfflineEnabled());
+  const [busy, setBusy] = useState(false);
+
+  const toggle = async () => {
+    setBusy(true);
+    const next = !enabled;
+    setOfflineEnabled(next);
+    if (next) {
+      setupOffline();
+    } else {
+      await teardownOffline();
+    }
+    setEnabled(next);
+    setTimeout(() => window.location.reload(), 300);
+  };
+
+  return (
+    <div style={{ padding: "10px 4px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, color: "#FFE8D0", fontWeight: 700, letterSpacing: "0.05em" }}>
+            {cz ? "REŽIM OFFLINE" : "OFFLINE MODE"}
+          </div>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#FFD0C099", marginTop: 2 }}>
+            {cz ? "Uloží sbírku do telefonu pro prohlížení bez připojení" : "Saves your collection on this device for offline browsing"}
+          </div>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={busy}
+          aria-label="toggle offline mode"
+          style={{ flexShrink: 0, width: 50, height: 28, borderRadius: 999, border: "2px solid #FFD0C055", background: enabled ? "#C8102E" : "transparent", position: "relative", cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, padding: 0 }}
+        >
+          <span style={{ position: "absolute", top: 2, left: enabled ? 24 : 2, width: 20, height: 20, borderRadius: "50%", background: "#FFE8D0", transition: "left 0.15s" }} />
+        </button>
+      </div>
+      {enabled && (
+        <div style={{ marginTop: 4 }}>
+          <SyncStatus cz={cz} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SyncStatus({ cz }) {
   const [lastSync, setLastSync] = useState(null);
   const [syncing, setSyncing] = useState(false);
@@ -89,7 +141,7 @@ function OfflineBadge({ cz }) {
       window.removeEventListener("offline", goOffline);
     };
   }, []);
-  if (online) return null;
+  if (!isOfflineEnabled() || online) return null;
   return (
     <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 999, background: "#2A0A0A", color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.08em", padding: "8px 16px", borderRadius: 999, boxShadow: "0 4px 16px #00000055", display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8102E" }} />
@@ -3846,7 +3898,7 @@ export default function App() {
               </button>
             ))}
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 4 }}>
-              <SyncStatus cz={cz} />
+              <OfflineSettings cz={cz} />
             </div>
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 4, paddingTop: 12 }}>
               {isAdmin
