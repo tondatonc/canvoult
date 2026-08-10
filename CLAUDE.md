@@ -1061,3 +1061,30 @@ Ask Tonda to visit `canvault.vercel.app/?debug=1` once online (after the app's h
 - `public/sw.js` — `logEvent()`, log written on every shell-branch outcome, `canvault-debug-log` cache excluded from version cleanup
 - `index.html` — `?debug=1` manual trigger, reads and displays the sw.js request log
 - `CLAUDE.md` — this section
+
+---
+
+## 2026-08-09 — ACTUAL ROOT CAUSE CONFIRMED & FIXED: response clone() race
+
+### The real bug (finally confirmed via the sw.js request log)
+Tonda's `?debug=1` screenshot showed the exact error on every single asset (`/`, the JS bundle, `manifest.json`, font files — all of them):
+```
+TypeError: Failed to execute 'clone' on 'Response': Response body is already used
+```
+
+**Cause:** in the shell branch's fetch handler, `res.clone()` was being called *inside* the async `caches.open(SHELL_CACHE).then(cache => cache.put(req, res.clone()))` chain — but `caches.open()` itself is asynchronous. Meanwhile, `return res` (handing the original, unc­loned response back to `event.respondWith`) happened synchronously, immediately. The browser then started reading/streaming that response's body to actually serve the page **before** the delayed `caches.open().then(...)` callback got around to calling `res.clone()`. Once a response body starts being consumed, `clone()` throws — every time, for every request, 100% reproducible. This is exactly why *nothing* beyond the install-time precache (which uses `cache.addAll()` directly, not subject to this race) ever made it into `canvault-shell-v4`, despite the app always working fine online.
+
+### Fix
+- `public/sw.js` — `res.clone()` is now called **synchronously**, the instant the response is received in `.then((res) => {...})`, stored in a local `resClone` variable, before any async step (`caches.open(...)`) begins. The async cache-write chain now uses `resClone` instead of calling `.clone()` late.
+- Bumped `SHELL_CACHE` to `v5` for a clean re-populate now that writes will actually succeed.
+- The image-cache branch was already correct (it awaits `fetch()` then clones immediately, synchronously, before `return res` — no race there), left unchanged.
+
+### Why this is confidently the fix
+Every single logged failure — 11/11 entries across 3 different page loads — showed this exact "body already used" error and nothing else. Diagnostic tooling (the `?debug=1` overlay + persistent sw.js request log) added over the last few iterations made this fully observable instead of guesswork.
+
+### Verification needed
+Ask Tonda to load `canvault.vercel.app/?debug=1` once online — the sw request log should now show `"cached":true` entries instead of clone errors, and `canvault-shell-v5` should contain far more than 5 entries (the actual JS bundle, CSS, fonts, etc.). Then test true offline load.
+
+### Files touched
+- `public/sw.js` — synchronous `res.clone()`, cache bumped to v5
+- `CLAUDE.md` — this section
