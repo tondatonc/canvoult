@@ -1172,3 +1172,16 @@ User correctly pushed back on the first icon fix — I'd hand-redrawn the can sh
 - `public/icon-512.png`
 - `public/icon-512-maskable.png`
 - `CLAUDE.md` — this section
+
+## 2026-08-11 — Debug screen access from Stats admin menu
+
+Added a button (admin-only, in Stats page, next to Export/Migration/Orphan Cleanup tools) that opens the existing `index.html` diagnostic overlay on demand instead of relying on it auto-triggering after 3s when `#root` is empty.
+
+- Button sets `?debug=1` on the current URL via `URL`/`searchParams` and does a full `window.location.href` navigation (not client-side router) so the vanilla-JS IIFE in `index.html` re-runs on load and picks up `location.search.indexOf("debug=1")`, calling `gatherAndRender({ force: true })`.
+- No changes needed to `index.html` itself — the `?debug=1` trigger already existed, just wasn't reachable from the UI.
+- Added `debugBtn` locale string (CZ: "🐛 ZOBRAZIT DEBUG OBRAZOVKU", EN: "🐛 OPEN DEBUG SCREEN") to both `L` objects.
+- Validated with `@babel/parser` + `esbuild` before push (both installed fresh this session via `npm install @babel/parser esbuild` — not present at session start).
+
+### Files touched
+- `src/App.jsx` — new debug button in `StatsPage` admin section + `debugBtn` locale strings (CZ/EN)
+- `CLAUDE.md` — this section
