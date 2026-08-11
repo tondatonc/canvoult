@@ -3548,6 +3548,15 @@ function StatsPage({ T, L, isAdmin }) {
         </button>
         <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Downloads a JSON file with your full collection + wishlist</p>
 
+        <button onClick={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.set("debug", "1");
+          window.location.href = url.toString();
+        }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "12px 28px", color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 13, letterSpacing: "0.15em", cursor: "pointer" }}>
+          {L.debugBtn}
+        </button>
+        <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Shows service worker / cache diagnostics overlay</p>
+
         {/* Migration tool */}
         <MigrateBlobTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos}
           onDone={({ cans: uc, wishes: uw }) => {
@@ -3790,6 +3799,7 @@ export default function App() {
     onWishlist: "★ NA MÉM PŘÁNÍ ★", addedOn: "PŘIDÁNO",
     foundItTitle: "NALEZENO", est: "★ ZAL. 2020 ★", every: "★ KAŽDÁ PLECHOVKA SE POČÍTÁ ★",
     exportBtn: "💾 EXPORTOVAT ZÁLOHU JSON",
+    debugBtn: "🐛 ZOBRAZIT DEBUG OBRAZOVKU",
   } : {
     collection: "Collection", wishlist: "Wishlist", canwall: "Can Wall", stats: "Stats",
     collectionTitle: "The Collection", wishlistTitle: "Wishlist", canwallTitle: "Can Wall", statsTitle: "Stats",
@@ -3825,6 +3835,7 @@ export default function App() {
     onWishlist: "★ ON MY WISHLIST ★", addedOn: "ADDED",
     foundItTitle: "FOUND IT", est: "★ EST. 2020 ★", every: "★ EVERY CAN COUNTS ★",
     exportBtn: "💾 EXPORT BACKUP JSON",
+    debugBtn: "🐛 OPEN DEBUG SCREEN",
   };
 
   const NAV = [
