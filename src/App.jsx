@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
-import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline } from "./offlineDb.js";
+import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
@@ -9,6 +9,16 @@ import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countrie
 
 const _PH = "c29kYWNhbjEyMw==";
 function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
+
+// Human-readable byte size for the offline backup indicator. null/undefined
+// means "unknown" (StorageManager API unsupported), shown as an em dash
+// rather than a misleading 0.
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 // "Last synced" indicator + manual "Sync now" button. Self-contained: reads
 // its own timestamp from IndexedDB (via db.getLastSyncTime) and calls
@@ -72,9 +82,15 @@ function SyncStatus({ cz }) {
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState(null); // null | "ok" | "error" | "offline"
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  const [storageUsage, setStorageUsage] = useState(null); // bytes used by the offline backup, or null if unknown
+
+  const refreshStorage = () => {
+    getStorageUsage().then(est => setStorageUsage(est ? est.usage : null)).catch(() => setStorageUsage(null));
+  };
 
   useEffect(() => {
     db.getLastSyncTime().then(ts => { if (ts) setLastSync(ts); }).catch(() => {});
+    refreshStorage();
     const goOnline = () => setOnline(true);
     const goOffline = () => setOnline(false);
     window.addEventListener("online", goOnline);
@@ -105,6 +121,7 @@ function SyncStatus({ cz }) {
       const ts = await db.forceSync();
       setLastSync(ts);
       setStatus("ok");
+      refreshStorage();
       setTimeout(() => window.location.reload(), 700);
     } catch {
       setStatus("error");
@@ -113,15 +130,26 @@ function SyncStatus({ cz }) {
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 4px" }}>
-      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: "#FFD0C0", letterSpacing: "0.05em" }}>
-        {cz ? "SYNCHRONIZOVÁNO: " : "SYNCED: "}{timeAgo(lastSync)}
-        {status === "error" && <span style={{ color: "#FFB0A0", marginLeft: 6 }}>{cz ? "chyba" : "failed"}</span>}
-        {status === "offline" && <span style={{ color: "#FFB0A0", marginLeft: 6 }}>{cz ? "offline" : "offline"}</span>}
-      </span>
-      <button onClick={handleSync} disabled={syncing} style={{ background: "transparent", border: "2px solid #FFD0C055", borderRadius: 8, padding: "6px 10px", color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, cursor: syncing ? "default" : "pointer", letterSpacing: "0.05em", opacity: syncing ? 0.6 : 1 }}>
-        {syncing ? (cz ? "SYNCHRONIZUJI…" : "SYNCING…") : status === "ok" ? "✅" : (cz ? "🔄 SYNC" : "🔄 SYNC NOW")}
-      </button>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 4px 2px" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", color: online ? "#B8E8CC" : "#FFB0A0" }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: online ? "#4CAF7D" : "#C8102E", flexShrink: 0 }} />
+          {online ? (cz ? "ONLINE — ŽIVÁ VERZE" : "ONLINE — LIVE VERSION") : (cz ? "OFFLINE — POUŽITA ZÁLOHA" : "OFFLINE — USING BACKUP")}
+        </span>
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#FFD0C099", letterSpacing: "0.03em" }}>
+          {cz ? "Záloha: " : "Backup: "}{formatBytes(storageUsage)}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 4px" }}>
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: "#FFD0C0", letterSpacing: "0.05em" }}>
+          {cz ? "SYNCHRONIZOVÁNO: " : "SYNCED: "}{timeAgo(lastSync)}
+          {status === "error" && <span style={{ color: "#FFB0A0", marginLeft: 6 }}>{cz ? "chyba" : "failed"}</span>}
+          {status === "offline" && <span style={{ color: "#FFB0A0", marginLeft: 6 }}>{cz ? "offline" : "offline"}</span>}
+        </span>
+        <button onClick={handleSync} disabled={syncing} style={{ background: "transparent", border: "2px solid #FFD0C055", borderRadius: 8, padding: "6px 10px", color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, cursor: syncing ? "default" : "pointer", letterSpacing: "0.05em", opacity: syncing ? 0.6 : 1 }}>
+          {syncing ? (cz ? "SYNCHRONIZUJI…" : "SYNCING…") : status === "ok" ? "✅" : (cz ? "🔄 SYNC" : "🔄 SYNC NOW")}
+        </button>
+      </div>
     </div>
   );
 }
