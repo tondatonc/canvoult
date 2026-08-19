@@ -1185,3 +1185,21 @@ Added a button (admin-only, in Stats page, next to Export/Migration/Orphan Clean
 ### Files touched
 - `src/App.jsx` — new debug button in `StatsPage` admin section + `debugBtn` locale strings (CZ/EN)
 - `CLAUDE.md` — this section
+
+## 2026-08-19 — Backup size + online/offline indicator in Offline Settings
+
+When offline mode is on, `SyncStatus` (rendered inside `OfflineSettings`, in the Stats/Misc admin menu) now shows two extra pieces of info above the existing "SYNCED: Xm ago / SYNC NOW" row:
+
+1. **Online/offline indicator** — a colored dot + label reading "ONLINE — LIVE VERSION" (green dot) or "OFFLINE — USING BACKUP" (red dot), CZ: "ONLINE — ŽIVÁ VERZE" / "OFFLINE — POUŽITA ZÁLOHA". Reuses the same `navigator.onLine` + `online`/`offline` window event pattern already used by `OfflineBadge`, tracked locally in `SyncStatus` state (not shared/lifted — kept isolated per existing pattern in this file).
+2. **Backup size** — how much space the offline backup is using, via a new `getStorageUsage()` helper in `offlineDb.js` that wraps the `navigator.storage.estimate()` StorageManager API and returns `{ usage, quota }` in bytes (or `null` if unsupported, e.g. older Safari). Formatted with a new `formatBytes()` helper in `App.jsx` (B/KB/MB, `null` → "—" em dash, never shown as a misleading 0).
+
+**Key learning:** `navigator.storage.estimate()` reports usage for the *whole origin*, not just our IndexedDB store — there's no browser API to isolate just the offline-cache portion. Since offline mode's service worker Cache Storage + IndexedDB dominate this app's storage footprint anyway, this is a reasonable proxy and is documented as such in the code comment. Storage is re-fetched on mount and again after a manual sync completes (`refreshStorage()` called from `handleSync`'s success path) so the number doesn't go stale after a sync changes what's cached.
+
+Both indicator and size only render when offline mode is enabled (inside the existing `{enabled && <SyncStatus />}` block in `OfflineSettings`) — no new always-on UI, no change to `OfflineBadge` (the separate floating "offline, showing saved data" pill shown app-wide while offline).
+
+Validated with `@babel/parser` + `esbuild` before push (already installed at `/home/claude/node_modules/` from a prior session).
+
+### Files touched
+- `src/offlineDb.js` — new `getStorageUsage()` export (StorageManager wrapper)
+- `src/App.jsx` — `formatBytes()` helper; `SyncStatus` extended with `storageUsage` state, `refreshStorage()`, and the new indicator/size row in its JSX
+- `CLAUDE.md` — this section
