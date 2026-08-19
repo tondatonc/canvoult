@@ -65,6 +65,23 @@ export function isOnline() {
   return typeof navigator === "undefined" ? true : navigator.onLine;
 }
 
+// Estimates how much space the offline backup (IndexedDB + Cache Storage)
+// is using on this device, via the StorageManager API. This reports usage
+// for the whole origin (not just our IndexedDB store), but since offline
+// mode's SW cache + IndexedDB dominate this app's storage footprint, it's
+// a good proxy for "how big is my backup". Returns null on browsers that
+// don't support the API (e.g. older Safari) — callers should treat null
+// as "unknown", not zero.
+export async function getStorageUsage() {
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return null;
+    const { usage, quota } = await navigator.storage.estimate();
+    return { usage: usage ?? null, quota: quota ?? null };
+  } catch {
+    return null;
+  }
+}
+
 // ─── OPT-IN TOGGLE ──────────────────────────────────────────────────────────
 // Offline mode is OFF by default so it doesn't quietly use storage on every
 // visitor's device — only people who explicitly turn it on (via the toggle
