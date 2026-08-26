@@ -1313,3 +1313,18 @@ Replaced with a dominant-color histogram approach:
   relative to the new algorithm; re-run the "Recompute colors" backfill tool
   (Stats/Misc admin panel) to update existing cans if a consistent look
   across the whole collection is wanted.
+
+
+## 2026-08-26 (2) — "Recompute all" option for color backfill
+
+`RecomputeColorsModal` only ever targeted cans/wishlist items *missing*
+`avgColor`, so after the dominant-color algorithm change above there was no
+way to refresh colors already stored for existing items — the modal just
+reported everything as done.
+
+Added a checkbox ("Recompute all, including cans that already have a color")
+that switches the target list from "missing only" to "every can/wishlist item
+with an image", overwriting existing `avgColor` values. Default stays
+"missing only" so normal day-to-day use (new cans without a color yet) is
+unchanged; the force option is opt-in for cases like this where the
+underlying algorithm changed and old stored values are stale.
