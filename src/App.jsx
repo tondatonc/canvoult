@@ -945,6 +945,122 @@ function CollapsibleOtherTags({ tags, activeTags, tagCounts, onToggleTag, T, lab
   );
 }
 
+// ─── SHARED TAG/COUNTRY FILTER LOGIC (used by CollectionPage + WishlistPage) ──
+// Both pages ran an identical tag-narrowing → count → sort → group-by-role
+// pipeline, and an identical filter-panel JSX block. Extracted here so a future
+// fix/tweak only needs to happen once instead of being mirrored by hand across
+// both pages (which is how these two drifted slightly out of sync before —
+// e.g. Collection's `allTagsRaw` wasn't alphabetically sorted while Wishlist's
+// was; both now sort, matching Wishlist's original — this only affects the
+// order tags appear in the Add/Edit autocomplete suggestions, nothing else).
+function useTagFilterPipeline(items, { activeTags, tagRoles, customColors, tagSearch, tagSortMode = "alpha" }) {
+  return useMemo(() => {
+    const itemsForTagOptions = activeTags.length > 0 ? items.filter(it => activeTags.every(t => it.tags.includes(t))) : items;
+    const allTagsRaw = [...new Set([...activeTags, ...itemsForTagOptions.flatMap(it => it.tags)])].sort();
+    const tagCounts = itemsForTagOptions.reduce((acc, it) => { it.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
+    const allTagsSorted = tagSortMode === "count"
+      ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
+      : allTagsRaw;
+    // Three distinct groups: Brand (has a color), Size (marked via tag role), Other (neither)
+    const sizeTagsAll = allTagsSorted.filter(t => tagRoles[t] === "size");
+    const brandTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
+    const otherTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
+    const tagSearchLow = tagSearch.trim().toLowerCase();
+    return {
+      allTagsRaw,
+      tagCounts,
+      allTags: tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll,
+      brandTags: tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll,
+      sizeTags: tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll,
+    };
+  }, [items, activeTags, tagSortMode, tagRoles, customColors, tagSearch]);
+}
+
+// Shared tag-filter panel: tag search box, optional A→Z/# sort toggle (pass
+// tagSortMode+setTagSortMode to show it, omit for pages that don't need it),
+// and the Brand/Size/Other tag pill groups. Used by both CollectionPage and
+// WishlistPage — previously two independent, drift-prone copies of this JSX.
+function TagFilterPanel({ T, L, allTagsRaw, tagSearch, setTagSearch, activeTags, setActiveTags, brandTags, sizeTags, allTags, tagCounts, tagSortMode, setTagSortMode }) {
+  if (allTagsRaw.length === 0) return null;
+  const toggleTag = tag => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag]);
+  return (
+    <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, gap: 8 }}>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
+        <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
+          style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
+        {setTagSortMode && (
+          <button onClick={() => setTagSortMode(m => m === "alpha" ? "count" : "alpha")}
+            style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", letterSpacing: "0.08em", flexShrink: 0 }}>
+            {tagSortMode === "alpha" ? "A→Z" : "#"}
+          </button>
+        )}
+        {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 8px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", flexShrink: 0 }}>{L.clear}</span>}
+      </div>
+
+      {brandTags.length > 0 && (
+        <div style={{ marginBottom: 9 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.brandTagsLabel || "BRAND"}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {brandTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => toggleTag(tag)} T={T} />)}
+          </div>
+        </div>
+      )}
+
+      {sizeTags.length > 0 && (
+        <div style={{ marginBottom: 9 }}>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => toggleTag(tag)} T={T} />)}
+          </div>
+        </div>
+      )}
+
+      {allTags.length > 0 && (
+        <CollapsibleOtherTags
+          tags={allTags}
+          activeTags={activeTags}
+          tagCounts={tagCounts}
+          onToggleTag={toggleTag}
+          T={T}
+          label={(brandTags.length > 0 || sizeTags.length > 0) ? (L.otherTagsLabel || "OTHER") : null}
+        />
+      )}
+    </div>
+  );
+}
+
+// Shared country-filter pill row. Used by both CollectionPage and WishlistPage.
+function CountryFilterPanel({ T, L, allCountries, items, activeCountry, setActiveCountry }) {
+  if (allCountries.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
+      <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {allCountries.map(country => {
+          const count = items.filter(it => (it.countries || []).includes(country)).length;
+          const active = activeCountry === country;
+          return (
+            <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{
+              padding: "5px 12px", borderRadius: "999px",
+              fontFamily: "Georgia, serif", fontSize: 12,
+              background: active ? "#C8102E" : T.bgCard,
+              color: active ? "#fff" : T.text,
+              border: `1.5px solid ${active ? "#C8102E" : T.border}`,
+              cursor: "pointer", transition: "all 0.15s",
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              {(() => { const rc = resolveCountry(country); return rc?.iso2 ? <FlagImg iso2={rc.iso2} name={rc.name} /> : null; })()}
+              {country}
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Grid modes in zoom order: grid5 → grid3 → grid2 → tile
 const GRID_MODES = ["grid5", "grid3", "grid2", "tile"];
 
@@ -2345,28 +2461,7 @@ function CollectionPage({ T, L, isAdmin }) {
   const [tagSearch, setTagSearch] = useState("");
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
   // Narrow tag options to only tags that co-occur with the cans matching the currently active tags.
-  // Memoized: this used to recompute the full tag-narrowing/count/sort pipeline on every render
-  // (including keystrokes in unrelated inputs) even when cans/tags/roles hadn't changed.
-  const { allTagsRaw, tagCounts, allTags, brandTags, sizeTags } = useMemo(() => {
-    const cansForTagOptions = activeTags.length > 0 ? cans.filter(c => activeTags.every(t => c.tags.includes(t))) : cans;
-    const allTagsRaw = [...new Set([...activeTags, ...cansForTagOptions.flatMap(c => c.tags)])];
-    const tagCounts = cansForTagOptions.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
-    const allTagsSorted = tagSortMode === "count"
-      ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
-      : [...allTagsRaw].sort();
-    // Three distinct groups: Brand (has a color), Size (marked via tag role), Other (neither)
-    const sizeTagsAll = allTagsSorted.filter(t => tagRoles[t] === "size");
-    const brandTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
-    const otherTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
-    const tagSearchLow = tagSearch.trim().toLowerCase();
-    return {
-      allTagsRaw,
-      tagCounts,
-      allTags: tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll,
-      brandTags: tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll,
-      sizeTags: tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll,
-    };
-  }, [cans, activeTags, tagSortMode, tagRoles, customColors, tagSearch]);
+  const { allTagsRaw, tagCounts, allTags, brandTags, sizeTags } = useTagFilterPipeline(cans, { activeTags, tagRoles, customColors, tagSearch, tagSortMode });
 
   const allCountries = useMemo(
     () => [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort(),
@@ -2466,69 +2561,12 @@ function CollectionPage({ T, L, isAdmin }) {
       </div>
 
       {/* ── Tag filters ── */}
-      {allTagsRaw.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, gap: 8 }}>
-            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
-            <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
-              style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
-            <button onClick={() => setTagSortMode(m => m === "alpha" ? "count" : "alpha")}
-              style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "2px 8px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 8, cursor: "pointer", letterSpacing: "0.08em", flexShrink: 0 }}>
-              {tagSortMode === "alpha" ? "A→Z" : "#"}
-            </button>
-            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 8px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", flexShrink: 0 }}>{L.clear}</span>}
-          </div>
-
-          {brandTags.length > 0 && (
-            <div style={{ marginBottom: 9 }}>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.brandTagsLabel || "BRAND"}</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {brandTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-              </div>
-            </div>
-          )}
-
-          {sizeTags.length > 0 && (
-            <div style={{ marginBottom: 9 }}>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-              </div>
-            </div>
-          )}
-
-          {allTags.length > 0 && (
-            <CollapsibleOtherTags
-              tags={allTags}
-              activeTags={activeTags}
-              tagCounts={tagCounts}
-              onToggleTag={tag => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])}
-              T={T}
-              label={(brandTags.length > 0 || sizeTags.length > 0) ? (L.otherTagsLabel || "OTHER") : null}
-            />
-          )}
-        </div>
-      )}
+      <TagFilterPanel T={T} L={L} allTagsRaw={allTagsRaw} tagSearch={tagSearch} setTagSearch={setTagSearch}
+        activeTags={activeTags} setActiveTags={setActiveTags} brandTags={brandTags} sizeTags={sizeTags}
+        allTags={allTags} tagCounts={tagCounts} tagSortMode={tagSortMode} setTagSortMode={setTagSortMode} />
 
       {/* ── Country filter ── */}
-      {allCountries.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {allCountries.map(country => {
-              const count = cans.filter(c => (c.countries || []).includes(country)).length;
-              const active = activeCountry === country;
-              return (
-                <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{ padding: "5px 12px", borderRadius: "999px", fontFamily: "Georgia, serif", fontSize: 12, background: active ? "#C8102E" : T.bgCard, color: active ? "#fff" : T.text, border: `1.5px solid ${active ? "#C8102E" : T.border}`, cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 5 }}>
-                  {(() => { const rc = resolveCountry(country); return rc?.iso2 ? <FlagImg iso2={rc.iso2} name={rc.name} /> : null; })()}
-                  {country}
-                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <CountryFilterPanel T={T} L={L} allCountries={allCountries} items={cans} activeCountry={activeCountry} setActiveCountry={setActiveCountry} />
 
       {/* ── Sort + view ── */}
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
@@ -2698,23 +2736,7 @@ function WishlistPage({ T, L, isAdmin }) {
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
   // Narrow tag options to only tags that co-occur with the wishes matching the currently active tags.
-  // Memoized for the same reason as CollectionPage's equivalent block.
-  const { allTagsRaw, tagCounts, allTags, brandTags, sizeTags } = useMemo(() => {
-    const wishesForTagOptions = activeTags.length > 0 ? wishes.filter(w => activeTags.every(t => w.tags.includes(t))) : wishes;
-    const allTagsRaw = [...new Set([...activeTags, ...wishesForTagOptions.flatMap(w => w.tags)])].sort();
-    const tagCounts = wishesForTagOptions.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
-    const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
-    const brandTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
-    const otherTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
-    const tagSearchLow = tagSearch.trim().toLowerCase();
-    return {
-      allTagsRaw,
-      tagCounts,
-      allTags: tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll,
-      brandTags: tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll,
-      sizeTags: tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll,
-    };
-  }, [wishes, activeTags, tagRoles, customColors, tagSearch]);
+  const { allTagsRaw, tagCounts, allTags, brandTags, sizeTags } = useTagFilterPipeline(wishes, { activeTags, tagRoles, customColors, tagSearch });
 
   // All unique countries that have been filled in
   const allCountries = useMemo(
@@ -2775,73 +2797,12 @@ function WishlistPage({ T, L, isAdmin }) {
         </div>
       )}
       {/* ── Tag filter ── */}
-      {allTagsRaw.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, gap: 8 }}>
-            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", flexShrink: 0 }}>{L.filterTag}</p>
-            <input value={tagSearch} onChange={e => setTagSearch(e.target.value)} placeholder={L.searchTags || "search tags…"}
-              style={{ flex: 1, maxWidth: 160, padding: "3px 9px", background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 999, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }} />
-            {activeTags.length > 0 && <span onClick={() => setActiveTags([])} style={{ padding: "3px 8px", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 10, cursor: "pointer", textDecoration: "underline", flexShrink: 0 }}>{L.clear}</span>}
-          </div>
-
-          {brandTags.length > 0 && (
-            <div style={{ marginBottom: 9 }}>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.brandTagsLabel || "BRAND"}</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {brandTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-              </div>
-            </div>
-          )}
-
-          {sizeTags.length > 0 && (
-            <div style={{ marginBottom: 9 }}>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.sizeTags || "SIZE"}</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {sizeTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])} T={T} />)}
-              </div>
-            </div>
-          )}
-
-          {allTags.length > 0 && (
-            <CollapsibleOtherTags
-              tags={allTags}
-              activeTags={activeTags}
-              tagCounts={tagCounts}
-              onToggleTag={tag => setActiveTags(p => p.includes(tag) ? p.filter(x => x !== tag) : [...p, tag])}
-              T={T}
-              label={(brandTags.length > 0 || sizeTags.length > 0) ? (L.otherTagsLabel || "OTHER") : null}
-            />
-          )}
-        </div>
-      )}
+      <TagFilterPanel T={T} L={L} allTagsRaw={allTagsRaw} tagSearch={tagSearch} setTagSearch={setTagSearch}
+        activeTags={activeTags} setActiveTags={setActiveTags} brandTags={brandTags} sizeTags={sizeTags}
+        allTags={allTags} tagCounts={tagCounts} />
 
       {/* ── Country filter ── */}
-      {allCountries.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "12px 16px", background: "#f0ece6", border: `2px solid ${T.border}`, borderRadius: 11 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 7 }}>{L.filterCountry}</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {allCountries.map(country => {
-              const count = wishes.filter(w => (w.countries || []).includes(country)).length;
-              const active = activeCountry === country;
-              return (
-                <button key={country} onClick={() => setActiveCountry(active ? null : country)} style={{
-                  padding: "5px 12px", borderRadius: "999px",
-                  fontFamily: "Georgia, serif", fontSize: 12,
-                  background: active ? "#C8102E" : T.bgCard,
-                  color: active ? "#fff" : T.text,
-                  border: `1.5px solid ${active ? "#C8102E" : T.border}`,
-                  cursor: "pointer", transition: "all 0.15s",
-                  display: "flex", alignItems: "center", gap: 6,
-                }}>
-                  {(() => { const rc = resolveCountry(country); return rc?.iso2 ? <FlagImg iso2={rc.iso2} name={rc.name} /> : null; })()}
-                  {country}
-                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, background: active ? "#ffffff33" : "#C8102E22", color: active ? "#fff" : "#C8102E", borderRadius: "999px", padding: "0 5px" }}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <CountryFilterPanel T={T} L={L} allCountries={allCountries} items={wishes} activeCountry={activeCountry} setActiveCountry={setActiveCountry} />
 
       {/* ── Sort + view ── */}
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
