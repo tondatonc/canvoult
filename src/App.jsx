@@ -2128,16 +2128,22 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
   const [progress, setProgress] = useState({ done: 0, total: 0, fail: 0 });
   const [log, setLog] = useState([]);
   const [wishes, setWishes] = useState([]);
+  const [forceAll, setForceAll] = useState(false); // recompute even items that already have a color (e.g. after algorithm changes)
 
   useEffect(() => {
     if (!db.isConfigured()) return;
     db.getWishlist().then(rows => setWishes(rows ? rows.map(db.rowToWish) : [])).catch(() => {});
   }, []);
 
-  const targets = [
+  const missing = [
     ...cans.filter(c => c.image && !c.avgColor).map(c => ({ item: c, kind: "can" })),
     ...wishes.filter(w => w.image && !w.avgColor).map(w => ({ item: w, kind: "wish" })),
   ];
+  const all = [
+    ...cans.filter(c => c.image).map(c => ({ item: c, kind: "can" })),
+    ...wishes.filter(w => w.image).map(w => ({ item: w, kind: "wish" })),
+  ];
+  const targets = forceAll ? all : missing;
 
   const addLog = (line) => setLog(l => [...l.slice(-60), line]);
 
@@ -2170,6 +2176,13 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
       </div>
       <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
 
+      {state === "idle" && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.03em", cursor: "pointer" }}>
+          <input type="checkbox" checked={forceAll} onChange={e => setForceAll(e.target.checked)} style={{ width: 15, height: 15, cursor: "pointer" }} />
+          Recompute all ({all.length}), including cans that already have a color
+        </label>
+      )}
+
       {targets.length === 0 ? (
         <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.05em" }}>
           ✅ Every can and wishlist item already has a stored color.
@@ -2177,7 +2190,9 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
       ) : (
         <>
           <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.05em", marginBottom: 16 }}>
-            {targets.length} item{targets.length === 1 ? "" : "s"} missing a color — this samples each photo (ignoring the white border) and saves the result so "Sort by color" works for them too.
+            {forceAll
+              ? `${targets.length} item${targets.length === 1 ? "" : "s"} will be recomputed — this samples each photo (ignoring the white border) and overwrites the stored color.`
+              : `${targets.length} item${targets.length === 1 ? "" : "s"} missing a color — this samples each photo (ignoring the white border) and saves the result so "Sort by color" works for them too.`}
           </p>
           {state === "idle" && (
             <button onClick={run} style={{ width: "100%", padding: "12px", background: "#C8102E", border: "none", borderRadius: 10, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer", marginBottom: 14 }}>
