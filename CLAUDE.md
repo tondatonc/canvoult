@@ -1287,3 +1287,29 @@ Extracted `useOnlineStatus()` — a small shared hook (state + effect, same logi
 ### Remaining flagged items (not yet done)
 - `GridCard`/`WishGridCard`, `TileCard`/`WishTileCard`, `DetailModal`/`WishDetailModal` — real visual/behavioral differences, judged not worth merging (see 2026-08-26 filter-panel de-dup entry above for reasoning).
 - Single 4,000-line `App.jsx` — could still be split into `components/`/`modals/`/`pages/` files for easier future editing.
+
+
+## 2026-08-26 — Smarter average-color detection
+
+`computeAvgColor()` in `src/App.jsx` previously used a flat mean of all non-white,
+non-transparent sampled pixels. This looked bad on multi-color cans (e.g. a
+red-and-blue label averaging into a muddy brown/purple that matched neither
+actual color on the can).
+
+Replaced with a dominant-color histogram approach:
+- Pixels are bucketed into a coarse RGB histogram (bucket size 24/channel,
+  ~11 buckets per channel) after the existing white-border and transparency
+  filtering.
+- Each bucket tracks a pixel count plus the sum of the *actual* (unquantized)
+  r/g/b values that landed in it, so the result isn't snapped to a bucket
+  boundary.
+- The top 3 buckets by pixel count are blended using a super-linear
+  `count^2` weight, so the visually dominant color clearly wins while still
+  smoothing across near-tied buckets (avoids jumpy results between very
+  similar photos).
+- Same function signature/return type (`"#rrggbb"` or `null`), same call
+  sites (upload flow, edit flow, `RecomputeColorsModal` backfill) — no schema
+  or caller changes needed. Existing `avg_color` values in Supabase are stale
+  relative to the new algorithm; re-run the "Recompute colors" backfill tool
+  (Stats/Misc admin panel) to update existing cans if a consistent look
+  across the whole collection is wanted.
