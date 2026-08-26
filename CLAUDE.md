@@ -1267,3 +1267,23 @@ Collection's `allTagsRaw` was never alphabetically sorted; Wishlist's was (`.sor
 ### Files touched
 - `src/App.jsx` — added `useTagFilterPipeline`, `TagFilterPanel`, `CountryFilterPanel`; `CollectionPage` and `WishlistPage` updated to use them
 - `CLAUDE.md` — this section
+
+## 2026-08-26 — De-dupe: shared useOnlineStatus hook (SyncStatus + OfflineBadge)
+
+### Problem
+`SyncStatus` and `OfflineBadge` each independently tracked `navigator.onLine` with their own `useState` + `online`/`offline` window listener pair — identical logic duplicated across two components.
+
+### Fix
+Extracted `useOnlineStatus()` — a small shared hook (state + effect, same logic as before) placed right after `formatBytes()`. Both components now just call `const online = useOnlineStatus();` instead of maintaining their own listener. `SyncStatus`'s other `useEffect` (loading last-sync-time + storage usage on mount) is unchanged, just no longer also wires up the listener.
+
+### Validation
+- `@babel/parser` + `esbuild` — both OK
+- Verified push via `api.github.com` byte-for-byte match
+
+### Files touched
+- `src/App.jsx` — new `useOnlineStatus()` hook; `SyncStatus` and `OfflineBadge` updated to use it
+- `CLAUDE.md` — this section
+
+### Remaining flagged items (not yet done)
+- `GridCard`/`WishGridCard`, `TileCard`/`WishTileCard`, `DetailModal`/`WishDetailModal` — real visual/behavioral differences, judged not worth merging (see 2026-08-26 filter-panel de-dup entry above for reasoning).
+- Single 4,000-line `App.jsx` — could still be split into `components/`/`modals/`/`pages/` files for easier future editing.
