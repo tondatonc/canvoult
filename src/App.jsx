@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
 import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
@@ -2344,35 +2344,49 @@ function CollectionPage({ T, L, isAdmin }) {
   const [tagSortMode, setTagSortMode] = useState("alpha"); // "alpha" | "count"
   const [tagSearch, setTagSearch] = useState("");
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
-  // Narrow tag options to only tags that co-occur with the cans matching the currently active tags
-  const cansForTagOptions = activeTags.length > 0 ? cans.filter(c => activeTags.every(t => c.tags.includes(t))) : cans;
-  const allTagsRaw = [...new Set([...activeTags, ...cansForTagOptions.flatMap(c => c.tags)])];
-  const tagCounts = cansForTagOptions.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
-  const allTagsSorted = tagSortMode === "count"
-    ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
-    : [...allTagsRaw].sort();
-  // Three distinct groups: Brand (has a color), Size (marked via tag role), Other (neither)
-  const sizeTagsAll = allTagsSorted.filter(t => tagRoles[t] === "size");
-  const brandTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
-  const otherTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
-  const tagSearchLow = tagSearch.trim().toLowerCase();
-  const allTags = (tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll);
-  const brandTags = (tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll);
-  const sizeTags = (tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll);
-  const allCountries = [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort();
+  // Narrow tag options to only tags that co-occur with the cans matching the currently active tags.
+  // Memoized: this used to recompute the full tag-narrowing/count/sort pipeline on every render
+  // (including keystrokes in unrelated inputs) even when cans/tags/roles hadn't changed.
+  const { allTagsRaw, tagCounts, allTags, brandTags, sizeTags } = useMemo(() => {
+    const cansForTagOptions = activeTags.length > 0 ? cans.filter(c => activeTags.every(t => c.tags.includes(t))) : cans;
+    const allTagsRaw = [...new Set([...activeTags, ...cansForTagOptions.flatMap(c => c.tags)])];
+    const tagCounts = cansForTagOptions.reduce((acc, can) => { can.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
+    const allTagsSorted = tagSortMode === "count"
+      ? [...allTagsRaw].sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b))
+      : [...allTagsRaw].sort();
+    // Three distinct groups: Brand (has a color), Size (marked via tag role), Other (neither)
+    const sizeTagsAll = allTagsSorted.filter(t => tagRoles[t] === "size");
+    const brandTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
+    const otherTagsAll = allTagsSorted.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
+    const tagSearchLow = tagSearch.trim().toLowerCase();
+    return {
+      allTagsRaw,
+      tagCounts,
+      allTags: tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll,
+      brandTags: tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll,
+      sizeTags: tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll,
+    };
+  }, [cans, activeTags, tagSortMode, tagRoles, customColors, tagSearch]);
 
-  const baseFiltered = cans.filter(can => {
-    const s = search.toLowerCase();
-    const matchSearch = (!s || can.name.toLowerCase().includes(s) || can.tags.some(t => t.includes(s)));
-    const matchTags = activeTags.length === 0 || activeTags.every(t => can.tags.includes(t));
-    const matchCountry = !activeCountry || (can.countries || []).includes(activeCountry);
-    return matchSearch && matchTags && matchCountry;
-  });
+  const allCountries = useMemo(
+    () => [...new Set(cans.flatMap(c => c.countries || []).filter(Boolean))].sort(),
+    [cans]
+  );
 
-  // Pinned cans always first
-  const filtered = sortCans(baseFiltered.filter(c => !pinned.includes(c.id)), sort, tagRoles);
-  const pinnedCans = baseFiltered.filter(c => pinned.includes(c.id));
-  const allFiltered = [...pinnedCans, ...filtered];
+  // Pinned cans always first. Memoized on the actual filter/sort inputs instead of
+  // re-filtering + re-sorting the whole collection on every render.
+  const { pinnedCans, allFiltered } = useMemo(() => {
+    const baseFiltered = cans.filter(can => {
+      const s = search.toLowerCase();
+      const matchSearch = (!s || can.name.toLowerCase().includes(s) || can.tags.some(t => t.includes(s)));
+      const matchTags = activeTags.length === 0 || activeTags.every(t => can.tags.includes(t));
+      const matchCountry = !activeCountry || (can.countries || []).includes(activeCountry);
+      return matchSearch && matchTags && matchCountry;
+    });
+    const filtered = sortCans(baseFiltered.filter(c => !pinned.includes(c.id)), sort, tagRoles);
+    const pinnedCans = baseFiltered.filter(c => pinned.includes(c.id));
+    return { pinnedCans, allFiltered: [...pinnedCans, ...filtered] };
+  }, [cans, search, activeTags, activeCountry, pinned, sort, tagRoles]);
 
   const togglePin = async (id) => {
     const was = pinned.includes(id);
@@ -2683,30 +2697,42 @@ function WishlistPage({ T, L, isAdmin }) {
   const [tagSearch, setTagSearch] = useState("");
   const [tagRoles, setTagRoles] = useState(() => loadTagRoles());
   const [customColors, setCustomColors] = useState(() => loadCustomColors());
-  // Narrow tag options to only tags that co-occur with the wishes matching the currently active tags
-  const wishesForTagOptions = activeTags.length > 0 ? wishes.filter(w => activeTags.every(t => w.tags.includes(t))) : wishes;
-  const allTagsRaw = [...new Set([...activeTags, ...wishesForTagOptions.flatMap(w => w.tags)])].sort();
-  const tagCounts = wishesForTagOptions.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
-  const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
-  const brandTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
-  const otherTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
-  const tagSearchLow = tagSearch.trim().toLowerCase();
-  const allTags = (tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll);
-  const brandTags = (tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll);
-  const sizeTags = (tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll);
+  // Narrow tag options to only tags that co-occur with the wishes matching the currently active tags.
+  // Memoized for the same reason as CollectionPage's equivalent block.
+  const { allTagsRaw, tagCounts, allTags, brandTags, sizeTags } = useMemo(() => {
+    const wishesForTagOptions = activeTags.length > 0 ? wishes.filter(w => activeTags.every(t => w.tags.includes(t))) : wishes;
+    const allTagsRaw = [...new Set([...activeTags, ...wishesForTagOptions.flatMap(w => w.tags)])].sort();
+    const tagCounts = wishesForTagOptions.reduce((acc, w) => { w.tags.forEach(t => { acc[t] = (acc[t] || 0) + 1; }); return acc; }, {});
+    const sizeTagsAll = allTagsRaw.filter(t => tagRoles[t] === "size");
+    const brandTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && (customColors[t] || BRAND_COLORS[t]));
+    const otherTagsAll = allTagsRaw.filter(t => tagRoles[t] !== "size" && !customColors[t] && !BRAND_COLORS[t]);
+    const tagSearchLow = tagSearch.trim().toLowerCase();
+    return {
+      allTagsRaw,
+      tagCounts,
+      allTags: tagSearchLow ? otherTagsAll.filter(t => t.includes(tagSearchLow)) : otherTagsAll,
+      brandTags: tagSearchLow ? brandTagsAll.filter(t => t.includes(tagSearchLow)) : brandTagsAll,
+      sizeTags: tagSearchLow ? sizeTagsAll.filter(t => t.includes(tagSearchLow)) : sizeTagsAll,
+    };
+  }, [wishes, activeTags, tagRoles, customColors, tagSearch]);
 
   // All unique countries that have been filled in
-  const allCountries = [...new Set(wishes.flatMap(w => w.countries || []).filter(Boolean))].sort();
+  const allCountries = useMemo(
+    () => [...new Set(wishes.flatMap(w => w.countries || []).filter(Boolean))].sort(),
+    [wishes]
+  );
 
-  const wishFiltered = wishes.filter(w => {
-    const tagMatch = activeTags.length === 0 || activeTags.every(t => w.tags.includes(t));
-    const countryMatch = !activeCountry || (w.countries || []).includes(activeCountry);
-    return tagMatch && countryMatch;
-  });
-  const sorted = [
-    ...wishFiltered.filter(w => pinnedWishes.includes(w.id)),
-    ...sortCans(wishFiltered.filter(w => !pinnedWishes.includes(w.id)), sort, tagRoles),
-  ];
+  const sorted = useMemo(() => {
+    const wishFiltered = wishes.filter(w => {
+      const tagMatch = activeTags.length === 0 || activeTags.every(t => w.tags.includes(t));
+      const countryMatch = !activeCountry || (w.countries || []).includes(activeCountry);
+      return tagMatch && countryMatch;
+    });
+    return [
+      ...wishFiltered.filter(w => pinnedWishes.includes(w.id)),
+      ...sortCans(wishFiltered.filter(w => !pinnedWishes.includes(w.id)), sort, tagRoles),
+    ];
+  }, [wishes, activeTags, activeCountry, pinnedWishes, sort, tagRoles]);
 
   const saveWish = async w => {
     if (db.isConfigured()) {
