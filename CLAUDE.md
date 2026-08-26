@@ -1203,3 +1203,31 @@ Validated with `@babel/parser` + `esbuild` before push (already installed at `/h
 - `src/offlineDb.js` — new `getStorageUsage()` export (StorageManager wrapper)
 - `src/App.jsx` — `formatBytes()` helper; `SyncStatus` extended with `storageUsage` state, `refreshStorage()`, and the new indicator/size row in its JSX
 - `CLAUDE.md` — this section
+
+## 2026-08-26 — Perf: memoized tag/filter/sort derivations (CollectionPage + WishlistPage)
+
+### Problem
+Neither `useMemo` nor `useCallback` was used anywhere in `App.jsx` (128 `useState` calls, 0 memoization). `CollectionPage` and `WishlistPage` recomputed the full tag-narrowing → count → sort → group-by-role pipeline, plus the search/tag/country filter + `sortCans()` call, on **every render** — including renders triggered by unrelated state changes (e.g. typing in the tag search box, opening a modal). This will get worse as the collection grows.
+
+### Fix
+Wrapped the derived-data pipelines in `useMemo`, keyed on their actual inputs, in both pages:
+- **Tag pipeline** (`allTagsRaw`, `tagCounts`, `allTags`, `brandTags`, `sizeTags`) — one `useMemo` per page, deps: `[cans/wishes, activeTags, tagRoles, customColors, tagSearch]` (CollectionPage also includes `tagSortMode`). Internal-only intermediates (`cansForTagOptions`/`wishesForTagOptions`, `allTagsSorted`, `sizeTagsAll`/`brandTagsAll`/`otherTagsAll`) stay local to the memo callback since nothing outside the block referenced them.
+- **`allCountries`** — separate `useMemo` keyed on `[cans]` / `[wishes]` only, since it doesn't depend on filters.
+- **Filter+sort pipeline** — CollectionPage: `{ pinnedCans, allFiltered }` memoized on `[cans, search, activeTags, activeCountry, pinned, sort, tagRoles]`. WishlistPage: `sorted` memoized on `[wishes, activeTags, activeCountry, pinnedWishes, sort, tagRoles]`. Confirmed via grep that no variable outside these blocks referenced the old intermediate names (`baseFiltered`, `filtered` standalone, `wishFiltered`) before removing them.
+
+No logic changed — every expression is byte-identical to before, just relocated inside `useMemo(() => {...}, [deps])` wrappers. Output variable names (`allTagsRaw`, `tagCounts`, `allTags`, `brandTags`, `sizeTags`, `allCountries`, `allFiltered`, `pinnedCans`, `sorted`) are unchanged so no JSX below had to change.
+
+### Validation
+- `@babel/parser` (`sourceType: 'module', plugins: ['jsx']`) — parse OK
+- `esbuild.transformSync` (`loader: 'jsx', jsx: 'automatic'`) — transform OK
+- Verified push via `api.github.com` (base64-decoded remote content byte-for-byte matches local file, not just diffed via raw CDN which can serve stale cache)
+
+### Files touched
+- `src/App.jsx` — `useMemo` import added; `CollectionPage` and `WishlistPage` derived-data blocks wrapped in `useMemo`
+- `CLAUDE.md` — this section
+
+### Next candidates (not yet done, flagged for a future session)
+- `CollectionPage`/`WishlistPage` are ~90% duplicate implementations (filter/sort/tag/grid logic, `GridCard`/`WishGridCard`, `TileCard`/`WishTileCard`, `DetailModal`/`WishDetailModal`) — worth consolidating into one generic component to eliminate the "fixed it in Collection, forgot Wishlist" bug class.
+- `getCanColor()`/`colorSortKey()` still recompute client-side per card render instead of reading the persisted `avg_color` DB column where available.
+- `OfflineBadge` and `SyncStatus` each independently listen for `online`/`offline` events — could share one `useOnlineStatus()` hook.
+- Single 4,000-line `App.jsx` file — splitting into `components/`/`modals/`/`pages/` would make future edits faster and lower-risk.
