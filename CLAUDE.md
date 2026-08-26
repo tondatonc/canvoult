@@ -1231,3 +1231,39 @@ No logic changed — every expression is byte-identical to before, just relocate
 - `getCanColor()`/`colorSortKey()` still recompute client-side per card render instead of reading the persisted `avg_color` DB column where available.
 - `OfflineBadge` and `SyncStatus` each independently listen for `online`/`offline` events — could share one `useOnlineStatus()` hook.
 - Single 4,000-line `App.jsx` file — splitting into `components/`/`modals/`/`pages/` would make future edits faster and lower-risk.
+
+## 2026-08-26 — De-dupe: shared tag/country filter logic + UI (CollectionPage + WishlistPage)
+
+### Problem
+`CollectionPage` and `WishlistPage` each had their own independent copy of:
+1. The tag-narrowing → count → sort → group-by-role (Brand/Size/Other) derivation pipeline.
+2. The tag-filter-panel JSX (search box, optional sort toggle, Brand/Size/Other pill groups).
+3. The country-filter-panel JSX (pill row with per-country counts + flags).
+
+This is exactly the "fixed it in Collection, forgot Wishlist" risk flagged in an earlier session — any tweak to tag grouping or filter UI had to be hand-mirrored across two ~300-line page components, and the two had already silently drifted (see below).
+
+### Fix — extracted three shared pieces (placed right before `GRID_MODES` in `App.jsx`)
+- **`useTagFilterPipeline(items, { activeTags, tagRoles, customColors, tagSearch, tagSortMode })`** — a shared hook wrapping the full derivation in one `useMemo`. Returns `{ allTagsRaw, tagCounts, allTags, brandTags, sizeTags }`. Takes `items` generically (works for both `cans` and `wishes` since both only need `.tags`).
+- **`<TagFilterPanel>`** — the tag search box + Brand/Size/Other pill groups. The A→Z/# sort-mode toggle button only renders `if (setTagSortMode)` is passed, so CollectionPage gets it and WishlistPage (which has no sort-mode UI) doesn't — same visual behavior as before for both pages.
+- **`<CountryFilterPanel>`** — the country pill row, taking `items` generically to compute per-country counts.
+
+Both `CollectionPage` and `WishlistPage` now just call the hook and render the two shared components with their own state wired in — no logic duplicated.
+
+### Drift found and fixed along the way
+Collection's `allTagsRaw` was never alphabetically sorted; Wishlist's was (`.sort()` at the end). The shared hook now always sorts (matching Wishlist's original behavior). **Only user-visible effect:** the tag suggestion order in the Add/Edit modal's autocomplete for the Collection page is now alphabetical instead of insertion-order — filtering, counts, and all other behavior are unchanged. Also unified the country-pill gap (was 5px in Collection, 6px in Wishlist) to 6px — a sub-pixel-level visual tweak, not a functional change.
+
+### Validation
+- `@babel/parser` (`sourceType: 'module', plugins: ['jsx']`) — parse OK
+- `esbuild.transformSync` (`loader: 'jsx', jsx: 'automatic'`) — transform OK
+- Grepped for every old local variable name (`cansForTagOptions`, `wishesForTagOptions`, `allTagsSorted`, the inline tag-filter/country-filter JSX blocks) to confirm nothing outside the removed blocks still referenced them before deleting
+- Verified push via `api.github.com` byte-for-byte match (not raw CDN)
+- Net result: `App.jsx` went from 4018 → 3979 lines even after adding ~120 lines of shared code, since each shared piece replaced two near-duplicate copies
+
+### Deliberately NOT merged this round (flagged, not done)
+- `GridCard`/`WishGridCard` and `TileCard`/`WishTileCard` — looked similar at a glance but have real visual differences (WANT badge, grayscale filter on wishlist images, different pin-button styling, tile note line) that would require several `kind === "wish" ? ... : ...` branches to merge safely. Given "don't break anything," judged this as more risk than the earlier filter-panel dedup for comparatively less payoff — left as-is.
+- `DetailModal`/`WishDetailModal` — same reasoning (different action sets: duplicate vs. mark-found).
+- Full `CollectionPage`/`WishlistPage` merge into one generic component — the two pages have enough real behavioral differences (search bar, bulk-admin toolbar, deep-link-by-id, sample data, "mark found → creates a can" flow) that a full merge would need a sprawling conditional structure. Shared what was truly identical (filter pipeline + panels) instead of forcing a bigger merge.
+
+### Files touched
+- `src/App.jsx` — added `useTagFilterPipeline`, `TagFilterPanel`, `CountryFilterPanel`; `CollectionPage` and `WishlistPage` updated to use them
+- `CLAUDE.md` — this section
