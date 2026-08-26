@@ -20,6 +20,24 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Shared online/offline tracker. SyncStatus and OfflineBadge each used to run
+// their own independent navigator.onLine state + online/offline listener
+// pair — same logic, two copies. Both now just call this hook.
+function useOnlineStatus() {
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+  return online;
+}
+
 // "Last synced" indicator + manual "Sync now" button. Self-contained: reads
 // its own timestamp from IndexedDB (via db.getLastSyncTime) and calls
 // db.forceSync() directly, so it doesn't touch any other component's state.
@@ -81,7 +99,7 @@ function SyncStatus({ cz }) {
   const [lastSync, setLastSync] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState(null); // null | "ok" | "error" | "offline"
-  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  const online = useOnlineStatus();
   const [storageUsage, setStorageUsage] = useState(null); // bytes used by the offline backup, or null if unknown
 
   const refreshStorage = () => {
@@ -91,14 +109,6 @@ function SyncStatus({ cz }) {
   useEffect(() => {
     db.getLastSyncTime().then(ts => { if (ts) setLastSync(ts); }).catch(() => {});
     refreshStorage();
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
   }, []);
 
   const timeAgo = (ts) => {
@@ -158,17 +168,7 @@ function SyncStatus({ cz }) {
 // so it's obvious the data on screen is from local cache. Self-contained —
 // doesn't read or write any app state, so it can't affect anything else.
 function OfflineBadge({ cz }) {
-  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
-  useEffect(() => {
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []);
+  const online = useOnlineStatus();
   if (!isOfflineEnabled() || online) return null;
   return (
     <div style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 999, background: "#2A0A0A", color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.08em", padding: "8px 16px", borderRadius: 999, boxShadow: "0 4px 16px #00000055", display: "flex", alignItems: "center", gap: 8 }}>
