@@ -352,14 +352,25 @@ async function compressCanPhoto(file) {
   });
 }
 
-// Compute the average color of a can photo, ignoring the white/near-white
-// border the app pads photos with (see compressCanPhoto) and ignoring fully
-// transparent pixels (PNGs). Returns a "#rrggbb" string, or null on failure.
-// Accepts either a File/Blob or an already-loaded HTMLImageElement.
+// Compute the representative ("dominant") color of a can photo, ignoring the
+// white/near-white border the app pads photos with (see compressCanPhoto) and
+// ignoring fully transparent pixels (PNGs). Returns a "#rrggbb" string, or
+// null on failure. Accepts either a File/Blob or an already-loaded
+// HTMLImageElement.
+//
+// Rather than a flat mean of every remaining pixel (which muddies multi-color
+// labels — e.g. a red-and-blue can averaging into a dull brown/purple that
+// matches neither color), this buckets pixels into a coarse color histogram
+// and returns a count-weighted average of the most common buckets. That way
+// the color that visually dominates the can wins, with a light blend across
+// the top few buckets so near-tied colors don't jump erratically between
+// similar photos.
 async function computeAvgColor(source) {
   const WHITE_THRESHOLD = 235; // r,g,b all >= this counts as "white border"
   const ALPHA_THRESHOLD = 16;  // pixels with alpha below this are skipped
   const SAMPLE = 60;           // downscale to this box for speed — color avg doesn't need full res
+  const BUCKET = 24;           // quantization step per channel for the histogram (256/24 ≈ 11 buckets/channel)
+  const TOP_N = 3;             // blend the top N buckets, weighted by how common each is
 
   const fromImage = (img) => {
     try {
@@ -368,16 +379,33 @@ async function computeAvgColor(source) {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
       const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
-      let r = 0, g = 0, b = 0, n = 0;
+
+      // bucketKey -> { count, r, g, b } (r/g/b are sums of the *actual* pixel
+      // values in that bucket, so the final color isn't snapped to a bucket
+      // boundary — only which bucket a pixel falls into is quantized).
+      const buckets = new Map();
       for (let i = 0; i < data.length; i += 4) {
         const pr = data[i], pg = data[i + 1], pb = data[i + 2], pa = data[i + 3];
         if (pa < ALPHA_THRESHOLD) continue; // transparent — skip
         if (pr >= WHITE_THRESHOLD && pg >= WHITE_THRESHOLD && pb >= WHITE_THRESHOLD) continue; // white border — skip
-        r += pr; g += pg; b += pb; n++;
+        const key = ((pr / BUCKET) | 0) * 10000 + ((pg / BUCKET) | 0) * 100 + ((pb / BUCKET) | 0);
+        let bucket = buckets.get(key);
+        if (!bucket) { bucket = { count: 0, r: 0, g: 0, b: 0 }; buckets.set(key, bucket); }
+        bucket.count++; bucket.r += pr; bucket.g += pg; bucket.b += pb;
       }
-      if (n === 0) return null; // whole image was border/transparent — bail
-      const hex = v => Math.round(v / n).toString(16).padStart(2, "0");
-      return `#${hex(r)}${hex(g)}${hex(b)}`;
+      if (buckets.size === 0) return null; // whole image was border/transparent — bail
+
+      // Weight super-linearly (count^2) so the dominant bucket clearly wins
+      // over minor ones, while still smoothing across near-ties in the top N.
+      const top = [...buckets.values()].sort((a, b) => b.count - a.count).slice(0, TOP_N);
+      let wr = 0, wg = 0, wb = 0, wSum = 0;
+      for (const bucket of top) {
+        const avgR = bucket.r / bucket.count, avgG = bucket.g / bucket.count, avgB = bucket.b / bucket.count;
+        const weight = bucket.count * bucket.count;
+        wr += avgR * weight; wg += avgG * weight; wb += avgB * weight; wSum += weight;
+      }
+      const hex = v => Math.round(v / wSum).toString(16).padStart(2, "0");
+      return `#${hex(wr)}${hex(wg)}${hex(wb)}`;
     } catch {
       return null; // e.g. canvas tainted by CORS
     }
