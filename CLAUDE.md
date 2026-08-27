@@ -1370,3 +1370,9 @@ which can lag).
 - Effect: once a collection has many brand tags, the Brand row collapses to a preview (6 tags) with a "▼ +N more" toggle, matching the Other section's UX — keeps the filter panel compact on mobile for large collections with lots of brands.
 - `CollapsibleOtherTags` was already generic (takes `tags`, `label`, etc.) — no new component needed, just reused it for `brandTags` in `TagFilterPanel` (in `src/App.jsx`). Updated the component's doc comment since it's no longer "Other"-specific.
 - No behavior change to collapse threshold (`collapseAt = 8`, `previewCount = 6` defaults apply to Brand too now).
+
+## 2026-08-27 — Fixed bar misalignment in BRANDS/TOP TAGS stats panels
+
+- Bug: in the Stats page BRANDS and TOP TAGS panels, each row is a flex container (`display:flex`) with a label div (`flex:1`) and a bar div (`flex:2`). Rows with long/hyphenated single-word labels (e.g. "san-pellegrino", "red-bull", "coca-cola", "#energy-drink") wrapped to two lines visually, but the label flex item's default `min-width: auto` let its min-content width exceed its intended 1-share of the row, which pushed/shrank the bar div next to it — bars ended up starting at different x-offsets and different widths row-to-row instead of lining up.
+- Fix: added `minWidth: 0` to both the label div and the bar-track div in each row (BRANDS panel + TOP TAGS panel in `src/App.jsx`, inside the Stats/admin page). This is the standard flexbox fix — without it, flex items with `flex-basis` effectively forced to 0 (via `flex: N` shorthand) can still be inflated by unbreakable content min-content size.
+- Bars and count numbers now line up consistently regardless of label text length/wrapping.
