@@ -943,10 +943,11 @@ function TagPill({ tag, active, onClick, onRemove, T, count }) {
   );
 }
 
-// "Other" tags section, collapsed by default once there are more than a
+// Collapsible tag pill section, collapsed by default once there are more than a
 // handful of tags. Keeps the filter panel compact on mobile (where wrapping
-// dozens of uncategorized tag pills could otherwise eat half the screen)
-// while still showing everything with one tap, and on any screen size.
+// dozens of tag pills could otherwise eat half the screen) while still showing
+// everything with one tap, on any screen size. Used for the "Other" tags group
+// as well as the "Brand" tags group (both can grow long in large collections).
 function CollapsibleOtherTags({ tags, activeTags, tagCounts, onToggleTag, T, label, collapseAt = 8, previewCount = 6 }) {
   const [expanded, setExpanded] = useState(false);
   if (tags.length === 0) return null;
@@ -1028,10 +1029,14 @@ function TagFilterPanel({ T, L, allTagsRaw, tagSearch, setTagSearch, activeTags,
 
       {brandTags.length > 0 && (
         <div style={{ marginBottom: 9 }}>
-          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: T.textFaint, letterSpacing: "0.18em", marginBottom: 5 }}>{L.brandTagsLabel || "BRAND"}</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {brandTags.map(tag => <TagPill key={tag} tag={tag} active={activeTags.includes(tag)} count={tagCounts[tag]} onClick={() => toggleTag(tag)} T={T} />)}
-          </div>
+          <CollapsibleOtherTags
+            tags={brandTags}
+            activeTags={activeTags}
+            tagCounts={tagCounts}
+            onToggleTag={toggleTag}
+            T={T}
+            label={L.brandTagsLabel || "BRAND"}
+          />
         </div>
       )}
 
