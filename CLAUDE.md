@@ -1363,3 +1363,10 @@ the two `viewMode === "grid5"` gap/hideLabel call sites, and one stale
 comment). Validated with `@babel/parser` + `esbuild` before push, verified
 live via the GitHub Contents API (not the `raw.githubusercontent.com` CDN,
 which can lag).
+
+## 2026-08-27 — Brand tags section now expandable/collapsible
+
+- The **Brand** tags group in `TagFilterPanel` now uses the same `CollapsibleOtherTags` component that the **Other** tags group already used, instead of rendering a flat `flexWrap` list of all brand pills.
+- Effect: once a collection has many brand tags, the Brand row collapses to a preview (6 tags) with a "▼ +N more" toggle, matching the Other section's UX — keeps the filter panel compact on mobile for large collections with lots of brands.
+- `CollapsibleOtherTags` was already generic (takes `tags`, `label`, etc.) — no new component needed, just reused it for `brandTags` in `TagFilterPanel` (in `src/App.jsx`). Updated the component's doc comment since it's no longer "Other"-specific.
+- No behavior change to collapse threshold (`collapseAt = 8`, `previewCount = 6` defaults apply to Brand too now).
