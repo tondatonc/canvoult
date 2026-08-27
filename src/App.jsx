@@ -1089,17 +1089,17 @@ function CountryFilterPanel({ T, L, allCountries, items, activeCountry, setActiv
   );
 }
 
-// Grid modes in zoom order: grid5 → grid3 → grid2 → tile
-const GRID_MODES = ["grid5", "grid3", "grid2", "tile"];
+// Grid modes in zoom order: grid4 → grid3 → grid2 → tile (tile = 1 per row)
+const GRID_MODES = ["grid4", "grid3", "grid2", "tile"];
 
-// Column template per grid mode. grid5 and grid3 use auto-fill with a minmax floor so
-// the grid naturally fills the full available width with MORE than 5/3 columns on wide
-// desktop screens, instead of stretching a fixed count of oversized cards. grid2 stays a
-// fixed 2 columns since it's meant to feel like a deliberate close-up "zoomed in" view.
+// Column template per grid mode. Each mode is a FIXED column count (4, 3, or 2 per row)
+// so the modes are always visually distinct regardless of screen width, instead of
+// auto-fill/minmax collapsing two different modes down to the same column count on
+// narrow phone screens.
 function gridColumnsFor(viewMode) {
-  if (viewMode === "grid5") return "repeat(auto-fill, minmax(110px, 1fr))";
-  if (viewMode === "grid2") return "repeat(2, 1fr)";
-  return "repeat(auto-fill, minmax(170px, 1fr))"; // grid3
+  if (viewMode === "grid4") return "repeat(4, 1fr)";
+  if (viewMode === "grid3") return "repeat(3, 1fr)";
+  return "repeat(2, 1fr)"; // grid2
 }
 
 // Ctrl/Cmd + scroll wheel cycles through grid zoom levels
@@ -1141,7 +1141,7 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     cursor: "pointer", transition: "all 0.15s",
   });
 
-  const iconFor = (v) => v === "grid5" ? "▦" : v === "grid3" ? "⊞" : v === "grid2" ? "▣" : "▤";
+  const iconFor = (v) => v === "grid4" ? "▦" : v === "grid3" ? "⊞" : v === "grid2" ? "▣" : "▤";
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
@@ -2615,8 +2615,8 @@ function CollectionPage({ T, L, isAdmin }) {
       <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
       </div>
 
-      {/* Grid / Tile — Ctrl/Cmd + scroll to zoom. Full page width: on wide screens, grid5
-          and grid3 use auto-fill so more columns appear instead of stretching 5 huge cards. */}
+      {/* Grid / Tile — Ctrl/Cmd + scroll to zoom. Each grid mode is a fixed column count
+          (4 / 3 / 2 per row) so the zoom levels are always visually distinct. */}
       <div onWheel={makeGridZoomWheelHandler(viewMode, setViewMode)}>
       {allFiltered.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 0" }}>
@@ -2628,8 +2628,8 @@ function CollectionPage({ T, L, isAdmin }) {
           {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 3 : 5 }}>
-          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid5"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
+          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid4"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
       </div>
@@ -2876,8 +2876,8 @@ function WishlistPage({ T, L, isAdmin }) {
           {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid5" ? 3 : 5 }}>
-          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid5"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
+          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid4"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       )}
       </div>
