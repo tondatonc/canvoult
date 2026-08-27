@@ -1328,3 +1328,38 @@ with an image", overwriting existing `avgColor` values. Default stays
 "missing only" so normal day-to-day use (new cans without a color yet) is
 unchanged; the force option is opt-in for cases like this where the
 underlying algorithm changed and old stored values are stale.
+
+
+## 2026-08-27 — Fixed grid scale buttons (grid5→grid4, fixed columns, tighter gaps)
+
+Bug: the grid zoom control had 4 modes (`grid5`, `grid3`, `grid2`, `tile`)
+where `grid3` and `grid2` used `repeat(auto-fill, minmax(Npx, 1fr))`. On
+narrow phone screens both auto-fill widths resolved to the same 2-column
+layout, so two of the four scale buttons looked/behaved identically —
+reported by Tonda from screenshots on a phone.
+
+Fix: `GRID_MODES` is now `["grid4", "grid3", "grid2", "tile"]` and
+`gridColumnsFor()` uses **fixed** column counts instead of auto-fill:
+- `grid4` → `repeat(4, 1fr)`
+- `grid3` → `repeat(3, 1fr)`
+- `grid2` → `repeat(2, 1fr)`
+- `tile`  → existing list/tile layout (1 per row), unchanged
+
+This guarantees each zoom level is visually distinct at any screen width —
+the four modes now literally mean 4/3/2/1 cards per row. Renamed `grid5` →
+`grid4` throughout (`GRID_MODES`, `gridColumnsFor`, `iconFor`, `hideLabel`
+checks, gap logic, comments) since the mode is a true fixed-4 grid now, not
+an auto-fill floor of ~110px that happened to average ~5 across.
+
+Also tightened the gap between cards: `gap: viewMode === "grid4" ? 2 :
+viewMode === "grid3" ? 3 : 4` (was a flat 3/5 split). Ctrl/Cmd+scroll zoom
+behavior, default mode (`grid3`), and URL param persistence (`?view=`) are
+unchanged — `grid5` is no longer a valid stored value but old links/localStorage
+containing `view=grid5` will simply fail the mode check and fall through to
+whatever the component's default is (`grid3`), so no migration needed.
+
+Files touched: `src/App.jsx` only (`GRID_MODES`, `gridColumnsFor`, `iconFor`,
+the two `viewMode === "grid5"` gap/hideLabel call sites, and one stale
+comment). Validated with `@babel/parser` + `esbuild` before push, verified
+live via the GitHub Contents API (not the `raw.githubusercontent.com` CDN,
+which can lag).
