@@ -3539,8 +3539,8 @@ function StatsPage({ T, L, isAdmin }) {
             {brandCounts.slice(0, 8).map(({ brand, count, color }) => (
               <div key={brand} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
-                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.text, flex: 1, letterSpacing: "0.05em" }}>{brand}</div>
-                <div style={{ flex: 2, height: 6, background: T.border, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.text, flex: 1, minWidth: 0, letterSpacing: "0.05em" }}>{brand}</div>
+                <div style={{ flex: 2, minWidth: 0, height: 6, background: T.border, borderRadius: 3, overflow: "hidden" }}>
                   <div style={{ height: "100%", background: color, width: `${(count / brandCounts[0].count) * 100}%`, borderRadius: 3 }} />
                 </div>
                 <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, minWidth: 20, textAlign: "right" }}>{count}</div>
@@ -3555,8 +3555,8 @@ function StatsPage({ T, L, isAdmin }) {
             <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.2em", marginBottom: 12 }}>TOP TAGS</p>
             {topTags.map(([tag, count]) => (
               <div key={tag} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", flex: 1 }}>#{tag}</div>
-                <div style={{ flex: 2, height: 6, background: T.border, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", flex: 1, minWidth: 0 }}>#{tag}</div>
+                <div style={{ flex: 2, minWidth: 0, height: 6, background: T.border, borderRadius: 3, overflow: "hidden" }}>
                   <div style={{ height: "100%", background: "#C8102E", width: `${(count / topTags[0][1]) * 100}%`, borderRadius: 3 }} />
                 </div>
                 <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, minWidth: 20, textAlign: "right" }}>{count}</div>
