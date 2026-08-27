@@ -1097,14 +1097,40 @@ function CountryFilterPanel({ T, L, allCountries, items, activeCountry, setActiv
 // Grid modes in zoom order: grid4 → grid3 → grid2 → tile (tile = 1 per row)
 const GRID_MODES = ["grid4", "grid3", "grid2", "tile"];
 
-// Column template per grid mode. Each mode is a FIXED column count (4, 3, or 2 per row)
-// so the modes are always visually distinct regardless of screen width, instead of
-// auto-fill/minmax collapsing two different modes down to the same column count on
-// narrow phone screens.
-function gridColumnsFor(viewMode) {
-  if (viewMode === "grid4") return "repeat(4, 1fr)";
-  if (viewMode === "grid3") return "repeat(3, 1fr)";
-  return "repeat(2, 1fr)"; // grid2
+// Tracks whether the viewport is phone-sized, so the grid can use fixed column
+// counts on mobile (where auto-fill/minmax can make two zoom levels collapse to
+// the same column count) while keeping the original desktop behavior of filling
+// the wide screen with more columns than the mode's "base" number.
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= breakpoint : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+// Column template per grid mode.
+// - On mobile: FIXED column counts (4, 3, or 2 per row) so every zoom level is
+//   visually distinct regardless of exact screen width.
+// - On desktop: grid4/grid3 use auto-fill with a minmax floor so the grid fills
+//   the full available width with MORE columns than the base count on wide
+//   screens, instead of stretching a fixed number of oversized cards. grid2
+//   stays a fixed 2 columns everywhere since it's meant to feel like a
+//   deliberate close-up "zoomed in" view.
+function gridColumnsFor(viewMode, isMobile) {
+  if (viewMode === "grid2") return "repeat(2, 1fr)";
+  if (isMobile) {
+    if (viewMode === "grid4") return "repeat(4, 1fr)";
+    return "repeat(3, 1fr)"; // grid3
+  }
+  if (viewMode === "grid4") return "repeat(auto-fill, minmax(110px, 1fr))";
+  return "repeat(auto-fill, minmax(170px, 1fr))"; // grid3
 }
 
 // Ctrl/Cmd + scroll wheel cycles through grid zoom levels
@@ -2445,6 +2471,7 @@ function CollectionPage({ T, L, isAdmin }) {
   const [activeTags, setActiveTags] = useState(() => { const t = searchParams.get("tag"); return t ? t.split(",").filter(Boolean) : []; });
   const [sort, setSort] = useState(searchParams.get("sort") || "newest");
   const [viewMode, setViewMode] = useState(() => { const v = searchParams.get("view"); return v === "grid" ? "grid3" : (v || "grid3"); });
+  const isMobile = useIsMobile();
   const [modal, setModal] = useState(null);
   const [pinned, setPinned] = useState([]);
   const [loadError, setLoadError] = useState(null); // surfaces real Supabase fetch failures instead of silently showing sample data
@@ -2633,7 +2660,7 @@ function CollectionPage({ T, L, isAdmin }) {
           {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
           {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid4"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
@@ -2730,6 +2757,7 @@ function WishlistPage({ T, L, isAdmin }) {
   const searchParams = new URLSearchParams(location.search);
   const [sort, setSort] = useState(searchParams.get("sort") || "newest");
   const [viewMode, setViewMode] = useState(() => { const v = searchParams.get("view"); return v === "grid" ? "grid3" : (v || "grid3"); });
+  const isMobile = useIsMobile();
   const [activeTags, setActiveTags] = useState(() => { const t = searchParams.get("tag"); return t ? t.split(",").filter(Boolean) : []; });
   const [activeCountry, setActiveCountry] = useState(searchParams.get("country") || null);
   const [modal, setModal] = useState(null);
@@ -2881,7 +2909,7 @@ function WishlistPage({ T, L, isAdmin }) {
           {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
           {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid4"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       )}
