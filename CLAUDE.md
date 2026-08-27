@@ -1376,3 +1376,37 @@ which can lag).
 - Bug: in the Stats page BRANDS and TOP TAGS panels, each row is a flex container (`display:flex`) with a label div (`flex:1`) and a bar div (`flex:2`). Rows with long/hyphenated single-word labels (e.g. "san-pellegrino", "red-bull", "coca-cola", "#energy-drink") wrapped to two lines visually, but the label flex item's default `min-width: auto` let its min-content width exceed its intended 1-share of the row, which pushed/shrank the bar div next to it — bars ended up starting at different x-offsets and different widths row-to-row instead of lining up.
 - Fix: added `minWidth: 0` to both the label div and the bar-track div in each row (BRANDS panel + TOP TAGS panel in `src/App.jsx`, inside the Stats/admin page). This is the standard flexbox fix — without it, flex items with `flex-basis` effectively forced to 0 (via `flex: N` shorthand) can still be inflated by unbreakable content min-content size.
 - Bars and count numbers now line up consistently regardless of label text length/wrapping.
+
+
+## 2026-08-27 (2) — Made the grid fix mobile-only, restored desktop auto-fill
+
+The previous grid-scale fix (fixed `repeat(4,1fr)` / `repeat(3,1fr)` columns)
+solved the mobile bug but also flattened desktop behavior — on a wide
+monitor, `grid4`/`grid3` used to fill the whole row with many more columns
+than their base count via `auto-fill, minmax(...)`, and the fixed-column
+change made desktop always show exactly 4 or 3 cards no matter how wide the
+window was. Tonda flagged this from a desktop screenshot showing only 4
+items stretched across a 1080p monitor.
+
+Fix: added a `useIsMobile()` hook (`window.matchMedia('(max-width: 640px)')`,
+listens for changes) and made `gridColumnsFor(viewMode, isMobile)` branch:
+- **Mobile** (`isMobile` true): fixed columns, same as the previous fix —
+  `grid4` → `repeat(4, 1fr)`, `grid3` → `repeat(3, 1fr)`, so the zoom levels
+  stay visually distinct on phones.
+- **Desktop** (`isMobile` false): back to the original auto-fill behavior —
+  `grid4` → `repeat(auto-fill, minmax(110px, 1fr))`, `grid3` →
+  `repeat(auto-fill, minmax(170px, 1fr))`, so wide screens naturally show
+  more columns than the base count instead of a few oversized cards.
+- `grid2` stays a fixed 2 columns on both mobile and desktop, unchanged
+  (it's meant to be a deliberate "zoomed in" close-up view either way).
+
+`isMobile` is read once per render from `useState` initialized via
+`window.innerWidth`, then kept in sync via a `matchMedia` change listener
+(handles resizing/rotating without a reload). Wired into both the main
+collection grid and the wishlist grid (each has its own `viewMode` state, so
+each got its own `isMobile = useIsMobile()` call).
+
+Files touched: `src/App.jsx` only (new `useIsMobile` hook, `gridColumnsFor`
+signature, both `gridTemplateColumns` call sites, both `viewMode` state
+blocks). Validated with `@babel/parser` + `esbuild`, verified live via the
+GitHub Contents API.
