@@ -1451,3 +1451,20 @@ example.
 Files touched: `src/App.jsx` only (`computeAvgColor`, reverted to prior
 version). Validated with `@babel/parser` + `esbuild`, verified live via the
 GitHub Contents API (SHA matches pre-change version exactly).
+
+## 2026-08-28 — Show detected color as a frame in tile (1-per-row) view
+
+`can.avgColor` (computed by `computeAvgColor` at upload time) was previously
+only used internally for the "sort by color" feature — never actually shown
+anywhere in the UI. Added it as a visible frame: in `TileCard` (the tile /
+1-per-row view), the thumbnail box now has `background: can.avgColor` with a
+few px of padding around the image, so the detected dominant color shows as
+a colored border/frame around each can's photo. Falls back to transparent
+if a can has no `avgColor` yet (older cans not backfilled).
+
+Grid views (grid2/grid3/grid4) were left unchanged — this was scoped to the
+tile view only, per request.
+
+Files touched: `src/App.jsx` only (`TileCard`'s thumbnail wrapper div).
+Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
+Contents API.
