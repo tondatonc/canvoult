@@ -395,26 +395,13 @@ async function computeAvgColor(source) {
       }
       if (buckets.size === 0) return null; // whole image was border/transparent — bail
 
-      // Rank buckets by count boosted by saturation, not raw count alone.
-      // Black/gray/near-white pixels (shadows, background, printed text,
-      // metallic trim) are common on almost every photo and would otherwise
-      // out-vote the can's actual color — e.g. an orange can with black
-      // lettering landing on black/gray instead of orange. A saturated bucket
-      // now wins over a larger-but-achromatic one, while genuinely grayscale
-      // cans are unaffected (every bucket has ~equal low boost, so the
-      // highest-count one still wins).
-      const scored = [...buckets.values()].map(bucket => {
-        const avgR = bucket.r / bucket.count, avgG = bucket.g / bucket.count, avgB = bucket.b / bucket.count;
-        const max = Math.max(avgR, avgG, avgB), min = Math.min(avgR, avgG, avgB);
-        const sat = max > 0 ? (max - min) / max : 0; // 0 = gray/black, 1 = fully saturated
-        const chromaBoost = 1 + 3 * sat;
-        return { avgR, avgG, avgB, score: bucket.count * chromaBoost };
-      });
-      scored.sort((a, b) => b.score - a.score);
-      const top = scored.slice(0, TOP_N);
+      // Weight super-linearly (count^2) so the dominant bucket clearly wins
+      // over minor ones, while still smoothing across near-ties in the top N.
+      const top = [...buckets.values()].sort((a, b) => b.count - a.count).slice(0, TOP_N);
       let wr = 0, wg = 0, wb = 0, wSum = 0;
-      for (const { avgR, avgG, avgB, score } of top) {
-        const weight = score * score; // super-linear so the dominant bucket clearly wins
+      for (const bucket of top) {
+        const avgR = bucket.r / bucket.count, avgG = bucket.g / bucket.count, avgB = bucket.b / bucket.count;
+        const weight = bucket.count * bucket.count;
         wr += avgR * weight; wg += avgG * weight; wb += avgB * weight; wSum += weight;
       }
       const hex = v => Math.round(v / wSum).toString(16).padStart(2, "0");
