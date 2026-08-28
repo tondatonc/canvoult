@@ -2727,8 +2727,13 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
     <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s", boxShadow: "0 2px 8px #00000010" }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 18px ${color}28`; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "0 2px 8px #00000010"; }}>
-      <div style={{ width: 42, height: 62, flexShrink: 0, background: can.avgColor || "transparent", borderRadius: 6, padding: 3, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
+      <div style={{ width: 42, height: 62, flexShrink: 0, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {can.avgColor && (
+          <div style={{ position: "absolute", inset: -8, borderRadius: "50%", background: can.avgColor, filter: "blur(9px)", opacity: 0.6, zIndex: 0 }} />
+        )}
+        <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
+        </div>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
