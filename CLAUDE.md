@@ -1468,3 +1468,17 @@ tile view only, per request.
 Files touched: `src/App.jsx` only (`TileCard`'s thumbnail wrapper div).
 Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
 Contents API.
+
+## 2026-08-28 — avgColor: switched tile-view frame to an underglow
+
+Follow-up to the tile-view color display above: the solid padded-frame
+treatment was replaced with a soft glow instead. `TileCard`'s thumbnail box
+now has an absolutely-positioned circular div behind the image, filled with
+`can.avgColor`, blurred (`filter: blur(9px)`) and at 0.6 opacity — reads as
+a colored underglow radiating from behind the can rather than a hard-edged
+border. The image itself sits in a `position: relative, zIndex: 1` layer on
+top so it stays crisp. No glow renders if a can has no `avgColor` yet.
+
+Files touched: `src/App.jsx` only (`TileCard`'s thumbnail wrapper div).
+Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
+Contents API.
