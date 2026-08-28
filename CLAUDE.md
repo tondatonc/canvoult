@@ -1432,3 +1432,22 @@ still wins.
 Files touched: `src/App.jsx` only (`computeAvgColor`'s bucket-ranking logic).
 Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
 Contents API.
+
+## 2026-08-28 — Revert color-detection saturation boost
+
+The saturation-boost change above made things worse in practice (reported as
+cans getting *more* miscategorized, not less), so it's been reverted.
+`computeAvgColor` is back to the original linear/count-based bucket ranking:
+top-N buckets chosen by raw pixel count, blended with count^2 weighting. No
+saturation/chroma weighting is applied.
+
+The underlying complaint (a colorful can landing in the wrong
+grayscale/color-group during sort) is still open — needs a different
+approach than a global saturation boost, which had too broad an effect
+across the collection's photos. Next attempt should be tested against a
+sample of real problem photos before shipping, not reasoned from a single
+example.
+
+Files touched: `src/App.jsx` only (`computeAvgColor`, reverted to prior
+version). Validated with `@babel/parser` + `esbuild`, verified live via the
+GitHub Contents API (SHA matches pre-change version exactly).
