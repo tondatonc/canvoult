@@ -1410,3 +1410,25 @@ Files touched: `src/App.jsx` only (new `useIsMobile` hook, `gridColumnsFor`
 signature, both `gridTemplateColumns` call sites, both `viewMode` state
 blocks). Validated with `@babel/parser` + `esbuild`, verified live via the
 GitHub Contents API.
+
+## 2026-08-28 — Color detection: prefer saturated colors over black/gray
+
+Fixed a dominant-color bug where a vivid can (e.g. orange) with black
+lettering/trim was landing in the grayscale bucket instead of being grouped
+with its actual hue. The histogram in `computeAvgColor` previously ranked
+buckets purely by raw pixel count, so common achromatic pixels (black text,
+shadows, metallic highlights) could out-vote a smaller-but-vivid color
+bucket.
+
+Now each bucket's selection/blend score is boosted by its saturation
+(`chromaBoost = 1 + 3 * sat`, where `sat = (max-min)/max` of the bucket's
+avg r/g/b), so a saturated bucket can win over a larger achromatic one. Top-N
+bucket selection is now based on this boosted score (previously just raw
+count), and the super-linear (squared) blending weight is applied to the
+boosted score instead of raw count. Genuinely grayscale cans are unaffected,
+since every bucket there has a similarly low boost and the highest-count one
+still wins.
+
+Files touched: `src/App.jsx` only (`computeAvgColor`'s bucket-ranking logic).
+Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
+Contents API.
