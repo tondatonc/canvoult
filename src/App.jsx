@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
 import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
@@ -2606,7 +2607,7 @@ function CollectionPage({ T, L, isAdmin }) {
       {/* Controls stay at a comfortable reading width even when the page itself goes full-bleed */}
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* Search */}
-      <div style={{ position: "relative", marginBottom: 14 }}>
+      <div data-tut="search" style={{ position: "relative", marginBottom: 14 }}>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#C8102E", borderRadius: "11px 0 0 11px", fontSize: 17 }}>🔍</div>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or tag…"
           style={{ width: "100%", padding: "13px 36px 13px 52px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 11, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
@@ -2636,15 +2637,19 @@ function CollectionPage({ T, L, isAdmin }) {
       </div>
 
       {/* ── Tag filters ── */}
-      <TagFilterPanel T={T} L={L} allTagsRaw={allTagsRaw} tagSearch={tagSearch} setTagSearch={setTagSearch}
-        activeTags={activeTags} setActiveTags={setActiveTags} brandTags={brandTags} sizeTags={sizeTags}
-        allTags={allTags} tagCounts={tagCounts} tagSortMode={tagSortMode} setTagSortMode={setTagSortMode} />
+      <div data-tut="tag-filter">
+        <TagFilterPanel T={T} L={L} allTagsRaw={allTagsRaw} tagSearch={tagSearch} setTagSearch={setTagSearch}
+          activeTags={activeTags} setActiveTags={setActiveTags} brandTags={brandTags} sizeTags={sizeTags}
+          allTags={allTags} tagCounts={tagCounts} tagSortMode={tagSortMode} setTagSortMode={setTagSortMode} />
+      </div>
 
       {/* ── Country filter ── */}
       <CountryFilterPanel T={T} L={L} allCountries={allCountries} items={cans} activeCountry={activeCountry} setActiveCountry={setActiveCountry} />
 
       {/* ── Sort + view ── */}
-      <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
+      <div data-tut="sort-bar">
+        <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
+      </div>
       </div>
 
       {/* Grid / Tile — Ctrl/Cmd + scroll to zoom. Each grid mode is a fixed column count
@@ -2657,11 +2662,11 @@ function CollectionPage({ T, L, isAdmin }) {
         </div>
       ) : viewMode === "tile" ? (
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
-          {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+          {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} tut={i === 0} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
-          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} T={T} customColors={customColors} hideLabel={viewMode === "grid4"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} tut={i === 0} T={T} customColors={customColors} hideLabel={viewMode === "grid4"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
       </div>
@@ -2691,7 +2696,7 @@ function CollectionPage({ T, L, isAdmin }) {
   );
 }
 
-function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLabel = false }) {
+function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLabel = false, tut = false }) {
   const color = getCanColor(can.tags, customColors);
   // In 5-per-row (hideLabel) mode, drop the card border/shadow/radius entirely for a
   // cleaner, more compact icon-grid look — just the can image on a plain background.
@@ -2699,7 +2704,7 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLa
     ? { background: "transparent", border: "none", borderRadius: 6, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "none", transition: "transform 0.18s cubic-bezier(.34,1.56,.64,1)" }
     : { background: "#ffffff", border: `2px solid ${pinned ? "#C8102E88" : "#e8e0d8"}`, borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", animation: `popIn 0.3s cubic-bezier(.34,1.56,.64,1) ${i * 0.04}s both`, boxShadow: "0 2px 8px #0000000a", transition: "transform 0.22s cubic-bezier(.34,1.56,.64,1),box-shadow 0.22s,border-color 0.18s" };
   return (
-    <div onClick={onClick} style={cardStyle}
+    <div data-tut={tut ? "can-card" : undefined} onClick={onClick} style={cardStyle}
       onMouseEnter={e => { e.currentTarget.style.transform = hideLabel ? "scale(1.06)" : "translateY(-5px) rotate(-1deg)"; if (!hideLabel) { e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 12px 30px #00000022"; } }}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; if (!hideLabel) { e.currentTarget.style.borderColor = pinned ? "#C8102E88" : T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010,0 1px 0 #fff inset"; } }}>
       <div style={{ width: "100%", aspectRatio: "3/4", background: hideLabel ? "transparent" : "#f8f6f3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
@@ -2721,10 +2726,10 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLa
   );
 }
 
-function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {} }) {
+function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {}, tut = false }) {
   const color = getCanColor(can.tags, customColors);
   return (
-    <div onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s", boxShadow: "0 2px 8px #00000010" }}
+    <div data-tut={tut ? "can-card" : undefined} onClick={onClick} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 11, padding: "10px 14px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", animation: `popIn 0.25s ease ${i * 0.03}s both`, transition: "border-color 0.15s,box-shadow 0.15s", boxShadow: "0 2px 8px #00000010" }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 18px ${color}28`; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "0 2px 8px #00000010"; }}>
       <div style={{ width: 42, height: 62, flexShrink: 0, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -3838,13 +3843,135 @@ function OrphanCleanupTool({ T, cans, wishes, wallPhotos = [] }) {
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 
+// ─── TUTORIAL OVERLAY ─────────────────────────────────────────────────────────
+// A quiet, low-friction guided tour: a soft dimmed backdrop with a rounded
+// "spotlight" cutout around the real UI element (via a giant box-shadow, no
+// masks/SVG needed) and a small tooltip card placed beside it — never on top
+// of it. No arrows, no full-bleed illustration. If a step's target isn't in
+// the DOM yet (still loading, or an admin-only control for a guest), it
+// retries briefly then falls back to a plain centered card so the tour never
+// breaks, it just loses its highlight for that one step.
+function TutorialOverlay({ steps, onClose, T }) {
+  const [stepIdx, setStepIdx] = useState(0);
+  const [rect, setRect] = useState(null);
+  const step = steps[stepIdx];
+
+  useEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+    if (step.onEnter) step.onEnter();
+
+    const measure = () => {
+      if (cancelled) return;
+      if (!step.selector) { setRect(null); return; }
+      const el = document.querySelector(step.selector);
+      if (el) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        setTimeout(() => {
+          if (cancelled) return;
+          setRect(el.getBoundingClientRect());
+        }, 260);
+      } else if (tries < 5) {
+        tries += 1;
+        setTimeout(measure, 350);
+      } else {
+        setRect(null);
+      }
+    };
+    const kickoff = setTimeout(measure, 80);
+
+    const onResize = () => {
+      if (!step.selector) return;
+      const el = document.querySelector(step.selector);
+      if (el) setRect(el.getBoundingClientRect());
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onResize, true);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(kickoff);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onResize, true);
+      if (step.onExit) step.onExit();
+    };
+  }, [stepIdx]);
+
+  const isLast = stepIdx === steps.length - 1;
+  const goNext = () => (isLast ? onClose() : setStepIdx(i => i + 1));
+  const goPrev = () => setStepIdx(i => Math.max(0, i - 1));
+
+  const pad = 8;
+  let tooltipStyle = { position: "fixed", left: "50%", top: "50%", transform: "translate(-50%,-50%)" };
+  if (rect) {
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const below = spaceBelow > 170 || spaceBelow > spaceAbove;
+    const top = below ? Math.min(rect.bottom + pad + 10, window.innerHeight - 160) : Math.max(rect.top - pad - 10, 14);
+    const left = Math.min(Math.max(rect.left + rect.width / 2, 150), window.innerWidth - 150);
+    tooltipStyle = { position: "fixed", left, top, transform: below ? "translate(-50%,0)" : "translate(-50%,-100%)" };
+  }
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 10000 }}>
+      {rect ? (
+        <div style={{
+          position: "fixed", left: rect.left - pad, top: rect.top - pad,
+          width: rect.width + pad * 2, height: rect.height + pad * 2,
+          borderRadius: 14, boxShadow: "0 0 0 9999px rgba(20,8,8,0.42)",
+          border: "2px solid #C8102Eaa", pointerEvents: "none",
+          transition: "left 0.25s ease,top 0.25s ease,width 0.25s ease,height 0.25s ease",
+        }} />
+      ) : (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(20,8,8,0.42)" }} onClick={onClose} />
+      )}
+
+      <div style={{ ...tooltipStyle, width: 250, background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 14, padding: "13px 15px", boxShadow: "0 10px 32px #00000044", fontFamily: "Georgia,serif" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+          <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.15em", color: T.textFaint }}>{stepIdx + 1} / {steps.length}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.textFaint, fontSize: 16, cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontStyle: "italic", color: "#C8102E", fontSize: 15, marginBottom: 4 }}>{step.title}</div>
+        <div style={{ fontSize: 12, color: T.text, lineHeight: 1.4, marginBottom: 11 }}>{step.text}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.1em", cursor: "pointer", textDecoration: "underline" }}>SKIP</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            {stepIdx > 0 && <button onClick={goPrev} style={{ background: "transparent", border: `2px solid ${T.border}`, borderRadius: "999px", padding: "6px 11px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>BACK</button>}
+            <button onClick={goNext} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "6px 13px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{isLast ? "DONE" : "NEXT"}</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function App() {
   const [cz, setCz] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("cv_admin") === "1");
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Auto-launch the tour once, on a visitor's first-ever landing on the Collection
+  // page. Delayed slightly so the page has a moment to render before we start
+  // measuring elements for the spotlight. Never shows again after the first close
+  // (Skip or Done both count), but stays reachable any time via the menu.
+  useEffect(() => {
+    if (location.pathname !== "/") return;
+    if (localStorage.getItem("cv_tutorial_seen")) return;
+    const t = setTimeout(() => setShowTutorial(true), 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const closeTutorial = () => {
+    setShowTutorial(false);
+    setMenuOpen(false);
+    localStorage.setItem("cv_tutorial_seen", "1");
+  };
 
   const T = {
     isDark: false,
@@ -3948,6 +4075,48 @@ export default function App() {
     setMenuOpen(false);
   };
 
+  // Tour steps — each optionally targets a real element via data-tut selector.
+  // If a target isn't found (still loading, or admin-only for a guest), the
+  // overlay just shows the tip without a spotlight rather than breaking.
+  const tutorialSteps = useMemo(() => [
+    {
+      title: cz ? "Vítej v CanVaultu! 🥤" : "Welcome to CanVault! 🥤",
+      text: cz ? "Krátká prohlídka aplikace. Klepni na DALŠÍ, nebo kdykoliv klikni na PŘESKOČIT." : "A quick look around. Tap Next, or Skip any time.",
+    },
+    {
+      selector: '[data-tut="nav-menu"]',
+      title: cz ? "Hlavní menu" : "Main menu",
+      text: cz ? "Přepínej mezi Sbírkou, Přáními, Stěnou plechovek, Statistikami a přihlášením." : "Switch between Collection, Wishlist, Can Wall, Stats, and sign in from here.",
+      onEnter: () => setMenuOpen(true),
+      onExit: () => setMenuOpen(false),
+    },
+    {
+      selector: '[data-tut="cz-toggle"]',
+      title: cz ? "Jazyk" : "Language",
+      text: cz ? "Přepni celou aplikaci mezi angličtinou a češtinou." : "Flip the whole app between English and Czech any time.",
+    },
+    {
+      selector: '[data-tut="search"]',
+      title: cz ? "Hledání" : "Search",
+      text: cz ? "Hledej podle názvu plechovky nebo štítku." : "Search your collection by can name or tag.",
+    },
+    {
+      selector: '[data-tut="tag-filter"]',
+      title: cz ? "Štítky" : "Tag filters",
+      text: cz ? "Klepni na štítek pro rychlé zúžení sbírky — třeba dle značky nebo velikosti." : "Tap a tag to narrow the view — by brand, size, or anything you've tagged.",
+    },
+    {
+      selector: '[data-tut="sort-bar"]',
+      title: cz ? "Řazení a zobrazení" : "Sort & view",
+      text: cz ? "Změň řazení nebo přepni mezi mřížkou a seznamem." : "Change the sort order, or switch between grid and list layouts.",
+    },
+    {
+      selector: '[data-tut="can-card"]',
+      title: cz ? "Detail plechovky" : "Can details",
+      text: cz ? "Klepnutím na plechovku zobrazíš fotku, štítky a poznámky." : "Tap any can to see its photo, tags, and notes up close.",
+    },
+  ], [cz]);
+
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "Georgia,'Times New Roman',serif", transition: "background 0.3s,color 0.3s" }}>
       <style>{`
@@ -3986,10 +4155,10 @@ export default function App() {
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* Czech mode toggle */}
-            <button onClick={() => setCz(c => !c)} style={{ background: cz ? "#FFF5E6" : "#8a0000", border: `2px solid ${cz ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "5px 10px", color: cz ? "#C8102E" : "#FFF5E6", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: "0.05em", lineHeight: 1 }}>
+            <button data-tut="cz-toggle" onClick={() => setCz(c => !c)} style={{ background: cz ? "#FFF5E6" : "#8a0000", border: `2px solid ${cz ? "#FFE8D0" : "#5a0000"}`, borderRadius: "999px", padding: "5px 10px", color: cz ? "#C8102E" : "#FFF5E6", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: "0.05em", lineHeight: 1 }}>
               🇨🇿
             </button>
-            <button onClick={() => setMenuOpen(m => !m)} style={{ background: menuOpen ? "#FFF5E6" : "#8a0000", border: `2px solid ${menuOpen ? "#FFE8D0" : "#5a0000"}`, borderRadius: 10, padding: "7px 12px", color: menuOpen ? "#C8102E" : "#FFF5E6", cursor: "pointer", fontSize: 18, lineHeight: 1, fontWeight: 700 }}>
+            <button data-tut="nav-menu" onClick={() => setMenuOpen(m => !m)} style={{ background: menuOpen ? "#FFF5E6" : "#8a0000", border: `2px solid ${menuOpen ? "#FFE8D0" : "#5a0000"}`, borderRadius: 10, padding: "7px 12px", color: menuOpen ? "#C8102E" : "#FFF5E6", cursor: "pointer", fontSize: 18, lineHeight: 1, fontWeight: 700 }}>
               {menuOpen ? "✕" : "☰"}
             </button>
           </div>
@@ -4004,6 +4173,10 @@ export default function App() {
                 {currentNav.path === n.path && <span style={{ marginLeft: "auto" }}>●</span>}
               </button>
             ))}
+            <button onClick={() => { setMenuOpen(false); setTimeout(() => setShowTutorial(true), 150); }} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "13px 16px", marginBottom: 6, background: "transparent", border: "2px solid #FFD0C033", borderRadius: 11, color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
+              <span style={{ fontSize: 18 }}>❓</span>
+              <span>{cz ? "JAK NA TO" : "HOW IT WORKS"}</span>
+            </button>
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 4 }}>
               <OfflineSettings cz={cz} />
             </div>
@@ -4053,6 +4226,7 @@ export default function App() {
       </div>
 
       {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
+      {showTutorial && <TutorialOverlay steps={tutorialSteps} onClose={closeTutorial} T={T} />}
       <OfflineBadge cz={cz} />
     </div>
   );
