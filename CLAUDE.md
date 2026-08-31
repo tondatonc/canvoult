@@ -1482,3 +1482,61 @@ top so it stays crisp. No glow renders if a can has no `avgColor` yet.
 Files touched: `src/App.jsx` only (`TileCard`'s thumbnail wrapper div).
 Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
 Contents API.
+
+## 2026-08-31 — Guided tutorial overlay (spotlight style, no arrows)
+
+Implemented the `TutorialOverlay` component that was previously left
+mid-implementation (only the `createPortal` import had landed). Built as a
+self-contained, low-friction first-run tour, modeled after a T. Rowe Price
+app screenshot the user shared but intentionally *less obstructive*: no
+arrow graphics, no full-screen illustration overlay.
+
+**How it works:**
+- Dims the background (`rgba(20,8,8,0.42)`) and cuts a soft rounded
+  "spotlight" around the real target element using a giant `box-shadow`
+  trick (`0 0 0 9999px rgba(...)`) rather than an SVG mask — the target
+  itself is left untouched/interactive-looking, just visually framed with a
+  thin red border.
+- A small (250px) tooltip card is placed beside the spotlighted element
+  (above or below depending on available viewport space), never on top of
+  it. Card shows step count, a short title + one-line description, and
+  Skip / Back / Next(Done) controls.
+- Rendered via `createPortal` to `document.body` so it always sits above
+  page content regardless of stacking context, at `zIndex: 10000`.
+- Steps target real elements via `data-tut="..."` attributes added directly
+  to existing UI: header hamburger menu (`nav-menu`), Czech flag toggle
+  (`cz-toggle`), search box (`search`), tag filter panel wrapper
+  (`tag-filter`), sort/view bar wrapper (`sort-bar`), and the first can
+  card in both grid and tile view (`can-card`, via a new `tut` boolean prop
+  on `GridCard`/`TileCard` that's only `true` for `i === 0`).
+- If a step's target isn't in the DOM yet (data still loading, or an
+  admin-only control being shown to a signed-out guest), `measure()`
+  retries every 350ms up to 5 times, then falls back to a plain centered
+  card with no spotlight — the tour never crashes or gets stuck, it just
+  loses the highlight for that one step.
+- Some steps have `onEnter`/`onExit` callbacks — e.g. the nav-menu step
+  calls `setMenuOpen(true)` so the mobile menu is actually open while it's
+  being explained, and closes it again on exit.
+
+**Triggering:** auto-launches once, 1.2s after landing on `/` (Collection
+page), gated by a `cv_tutorial_seen` localStorage flag set on close
+(Skip or Done both count — so it never nags again). Also permanently
+reachable via a new "❓ HOW IT WORKS" row in the mobile hamburger menu,
+which works from any page and any admin state.
+
+Text is bilingual (EN/CZ) inline via the existing `cz` boolean rather than
+routed through the `L` object, to keep the diff scoped — steps are defined
+as a `useMemo(() => [...], [cz])` array inside `App()`.
+
+Files touched: `src/App.jsx` only — new `TutorialOverlay` component, new
+`createPortal` import, `showTutorial`/`tutorialSteps`/`closeTutorial` in
+`App()`, `data-tut` attributes on header buttons + `CollectionPage`
+search/tag-filter/sort-bar wrappers, new `tut` prop on `GridCard`/
+`TileCard`. Validated with `@babel/parser` + `esbuild`, verified live via
+the GitHub Contents API.
+
+**Not yet done:** the tour only covers the Collection page. Wishlist, Can
+Wall, and Stats pages have no `data-tut` anchors yet, so triggering "How it
+works" from those pages will show the Collection-scoped steps with
+fallback (non-spotlighted) tooltips for anything Collection-specific.
+Could add page-specific step sets later if wanted.
