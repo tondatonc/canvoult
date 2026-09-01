@@ -4173,8 +4173,8 @@ export default function App() {
                 {currentNav.path === n.path && <span style={{ marginLeft: "auto" }}>●</span>}
               </button>
             ))}
-            <button onClick={() => { setMenuOpen(false); setTimeout(() => setShowTutorial(true), 150); }} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: "13px 16px", marginBottom: 6, background: "transparent", border: "2px solid #FFD0C033", borderRadius: 11, color: "#FFE8D0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
-              <span style={{ fontSize: 18 }}>❓</span>
+            <button onClick={() => { setMenuOpen(false); setTimeout(() => setShowTutorial(true), 150); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", marginBottom: 6, background: "transparent", border: "1px solid #FFD0C033", borderRadius: 999, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", opacity: 0.85 }}>
+              <span style={{ fontSize: 12 }}>❓</span>
               <span>{cz ? "JAK NA TO" : "HOW IT WORKS"}</span>
             </button>
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 4 }}>
