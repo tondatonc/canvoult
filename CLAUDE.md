@@ -1540,3 +1540,14 @@ Wall, and Stats pages have no `data-tut` anchors yet, so triggering "How it
 works" from those pages will show the Collection-scoped steps with
 fallback (non-spotlighted) tooltips for anything Collection-specific.
 Could add page-specific step sets later if wanted.
+
+## 2026-08-31 (later) — Shrink "How it works" tour trigger
+
+Made the tutorial-replay button in the mobile menu visually secondary
+instead of matching the main nav buttons' size. Changed from a full-width
+row (`display: flex, width: 100%, padding: 13px 16px, fontSize: 15`) to a
+small auto-width pill (`display: inline-flex, padding: 5px 11px, fontSize:
+10, borderRadius: 999, opacity: 0.85, 1px border instead of 2px`). Icon
+shrunk from 18px to 12px. Still sits below the NAV.map() list, above the
+OfflineSettings divider. Validated + pushed via the usual GitHub Contents
+API workflow.
