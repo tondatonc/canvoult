@@ -1585,3 +1585,29 @@ live via the GitHub Contents API.
 them. Could wire the white-ratio computation into `RecomputeColorsModal`'s
 per-photo loop later to avoid a second pass over every image, if scan time
 becomes a concern as the collection grows.
+## 2026-09-05 (later) — Bad Crop Audit: crop guide overlay
+
+Tonda asked for the Bad Crop Audit tool to show where the picture is
+cropped, not just a % white number. Extended it to draw a green bounding-box
+overlay on each flagged thumbnail showing exactly where the tight crop
+should land.
+
+**Renamed/extended helper:** `computeWhiteRatio` -> `computeCropInfo`.
+Same 80x80 canvas sampling pass, but now also tracks min/max x/y of
+non-white, non-transparent pixels while it counts white ones (single pass,
+no extra cost). Returns `{ ratio, bbox }` where `bbox` is
+`{ left, top, right, bottom }` as 0-1 fractions of image width/height, or
+`null` if no non-white content was found.
+
+**`BadCropAuditTool` changes:** each flagged row's thumbnail grew from
+32x48 to 64x96 and is now wrapped in a `position: relative` container with
+an absolutely-positioned bordered `div` (2px solid #22C55E) sized/positioned
+from `bbox` percentages — so the green box sits directly over the detected
+can/content, with the white margin visible outside it. Added a one-line
+legend above the results list explaining the green box. `results` state
+now stores `bbox` alongside `item`/`kind`/`ratio`.
+
+Files touched: `src/App.jsx` only — `computeWhiteRatio` renamed to
+`computeCropInfo` with bbox tracking added, `BadCropAuditTool`'s scan loop
+and flagged-row JSX updated. Validated with `@babel/parser` + `esbuild`,
+verified live via the GitHub Contents API.
