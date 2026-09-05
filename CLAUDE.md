@@ -1551,3 +1551,37 @@ small auto-width pill (`display: inline-flex, padding: 5px 11px, fontSize:
 shrunk from 18px to 12px. Still sits below the NAV.map() list, above the
 OfflineSettings divider. Validated + pushed via the usual GitHub Contents
 API workflow.
+## 2026-09-05 — Bad Crop Audit tool
+
+Added a **Bad Crop Audit** tool to the admin debug screen (alongside
+Migrate Blob / Orphan Cleanup), addressing Tonda's request for a way to
+detect photos that are cropped too loosely (too much white background left
+in the shot).
+
+**New helper:** `computeWhiteRatio(source)` in `src/App.jsx` — samples an
+image down to an 80x80 canvas and counts what fraction of opaque pixels are
+near-white (r,g,b all >= 245), skipping transparent pixels entirely. Returns
+`null` on CORS-tainted canvas failures (mirrors the existing
+`computeAvgColor` pattern/thresholds for consistency).
+
+**New component:** `BadCropAuditTool` — same idle/scanning/done state
+machine shape as `OrphanCleanupTool`. Scans every can + wishlist item with
+an image via `loadImageCrossOrigin` + `computeWhiteRatio`, sorts
+descending by white ratio, and lets Tonda adjust a flag threshold (10-80%,
+default 35%) with a live-updating results list (thumbnail, name,
+collection/wishlist tag, exact % white). This is audit-only — it does not
+auto-crop or modify anything; Tonda re-crops flagged photos manually via the
+existing edit/crop flow.
+
+Hooked into the debug screen JSX right after `<OrphanCleanupTool .../>`.
+
+Files touched: `src/App.jsx` only — new `computeWhiteRatio` function (near
+`computeAvgColor`/`loadImageCrossOrigin`), new `BadCropAuditTool`
+component (right after `OrphanCleanupTool`), one new render line in the
+admin debug screen. Validated with `@babel/parser` + `esbuild`, verified
+live via the GitHub Contents API.
+
+**Not yet done:** threshold/results aren't persisted — rescanning resets
+them. Could wire the white-ratio computation into `RecomputeColorsModal`'s
+per-photo loop later to avoid a second pass over every image, if scan time
+becomes a concern as the collection grows.
