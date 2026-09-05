@@ -1611,3 +1611,27 @@ Files touched: `src/App.jsx` only — `computeWhiteRatio` renamed to
 `computeCropInfo` with bbox tracking added, `BadCropAuditTool`'s scan loop
 and flagged-row JSX updated. Validated with `@babel/parser` + `esbuild`,
 verified live via the GitHub Contents API.
+## 2026-09-05 (later still) — Bad Crop Audit: full-frame border + checkerboard
+
+Tonda clarified: the green content box was fine, but he couldn't tell where
+the *photo itself* ends, since both the thumbnail container and most can
+photos have white backgrounds — the picture edge was invisible against the
+white container. Fixed by:
+
+- Thumbnail container background changed from solid white to a light grey
+  checkerboard (CSS `linear-gradient` pattern, 8px squares) so any white
+  pixels belonging to the actual photo now visibly contrast against the
+  pattern instead of blending into the container.
+- Added a 1px solid slate (#64748b) border directly on the thumbnail
+  container, which — since the `<img>` fills it via `objectFit: contain` —
+  marks the full photo frame boundary.
+- Legend above the results list now explains both markers: a grey square =
+  full photo frame, a green square = detected content (crop target).
+
+Net effect: Tonda can now see the gap between the outer (grey) frame border
+and the inner (green) content box, which is exactly how far the white
+margin extends.
+
+Files touched: `src/App.jsx` only — `BadCropAuditTool`'s thumbnail
+container styling + legend JSX. Validated with `@babel/parser` + `esbuild`,
+verified live via the GitHub Contents API.
