@@ -1656,3 +1656,36 @@ entirely, keeping only a clear border around the whole photo. Simplified:
 Files touched: `src/App.jsx` only — `BadCropAuditTool`'s legend + flagged-
 row JSX. Validated with `@babel/parser` + `esbuild`, verified live via the
 GitHub Contents API.
+## 2026-09-05 (later still) — Bad Crop Audit: click-through to re-crop
+
+Added click-through editing so Tonda can fix a flagged photo without
+leaving the audit tool. Tapping any row in the flagged list now opens the
+existing `AddEditModal` (same one used for normal can/wish editing)
+pre-filled with that item — its built-in "✂️ CHANGE & RE-CROP" button and
+`CropModal` flow handle the actual re-crop + re-upload to Blob, so no new
+cropping UI was needed.
+
+**`BadCropAuditTool` changes:**
+- New `editEntry` state (`{ item, kind, ratio }`) set when a flagged row is
+  clicked; renders `<AddEditModal initial={editEntry.item} .../>` when set.
+- `folder` and `extraFields` passed based on `kind` (`"wishlist"`/`["note"]`
+  for wishlist items, `"collection"`/`[]` for cans) to match how
+  `WishlistPage`/`CollectionPage` already invoke the same modal.
+- `allTags` computed locally from `cans`+`wishes` tags so tag-autocomplete
+  still works inside the modal.
+- On save (`handleSaved`), calls a new `onSaveCan`/`onSaveWish` prop
+  (passed in from `StatsPage`, which owns the `cans`/`wishes` state this
+  tool reads from) to persist via `db.upsertCan`/`db.upsertWish`, then
+  removes that item from the local `results` array — treated as reviewed.
+  A manual rescan will re-flag it if the new crop is still too loose.
+- Added a small ✂️ hint icon + "tap to re-crop" caption on the flagged list.
+
+**`StatsPage` changes:** passes `onSaveCan`/`onSaveWish` into
+`<BadCropAuditTool>` — thin wrappers around `db.upsertCan`/`db.upsertWish`
+that also keep `StatsPage`'s own local `cans`/`wishes` state in sync.
+
+Files touched: `src/App.jsx` only — `BadCropAuditTool` (editEntry state,
+modal render, handleSaved, clickable rows), `StatsPage` (two new
+onSaveCan/onSaveWish callbacks passed as props). No changes to
+`AddEditModal` or `CropModal` — reused as-is. Validated with
+`@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
