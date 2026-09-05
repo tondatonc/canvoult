@@ -3978,8 +3978,13 @@ function BadCropAuditTool({ T, cans, wishes }) {
           </div>
 
           {flagged.length > 0 && (
-            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.05em", marginBottom: 10, display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid #22C55E", borderRadius: 2 }} /> = detected content — crop to this box
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.05em", marginBottom: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ display: "inline-block", width: 12, height: 12, border: "1px solid #64748b" }} /> = full photo frame
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid #22C55E", borderRadius: 2 }} /> = detected content — crop to this box
+              </span>
             </p>
           )}
 
@@ -3995,8 +4000,15 @@ function BadCropAuditTool({ T, cans, wishes }) {
               <div style={{ maxHeight: "50vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
                 {flagged.map(({ item, kind, ratio, bbox }) => (
                   <div key={`${kind}-${item.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8 }}>
-                    <div style={{ position: "relative", width: 64, height: 96, flexShrink: 0, background: "#fff", borderRadius: 4, overflow: "hidden" }}>
-                      <img src={item.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => e.target.style.display = "none"} />
+                    <div style={{
+                      position: "relative", width: 64, height: 96, flexShrink: 0, borderRadius: 4, overflow: "hidden",
+                      border: "1px solid #64748b",
+                      backgroundColor: "#fafafa",
+                      backgroundImage: "linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)",
+                      backgroundSize: "8px 8px",
+                      backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
+                    }}>
+                      <img src={item.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={e => e.target.style.display = "none"} />
                       {bbox && (
                         <div style={{
                           position: "absolute",
