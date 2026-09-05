@@ -1635,3 +1635,24 @@ margin extends.
 Files touched: `src/App.jsx` only — `BadCropAuditTool`'s thumbnail
 container styling + legend JSX. Validated with `@babel/parser` + `esbuild`,
 verified live via the GitHub Contents API.
+## 2026-09-05 (later still) — Bad Crop Audit: simplified to just full-frame border
+
+Tonda tested the previous version (checkerboard + grey full-frame border +
+green content box) and asked to drop the green content-detection box
+entirely, keeping only a clear border around the whole photo. Simplified:
+
+- Removed the `bbox` overlay `div` and its green (#22C55E) border from
+  `BadCropAuditTool`'s flagged-row JSX.
+- Removed the two-item legend line (full-frame / detected-content) — no
+  longer needed with only one marker.
+- Full-photo-frame border upgraded from 1px slate grey to **2px solid
+  black** for clearer visibility against the checkerboard background.
+- Checkerboard background pattern kept, since it's still what makes the
+  photo's own white pixels visible against the thumbnail container.
+- `computeCropInfo`'s `bbox` return value is now unused by the UI (ratio
+  is still used for flagging/sorting) but left in place in case a future
+  version wants it back.
+
+Files touched: `src/App.jsx` only — `BadCropAuditTool`'s legend + flagged-
+row JSX. Validated with `@babel/parser` + `esbuild`, verified live via the
+GitHub Contents API.
