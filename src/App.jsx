@@ -425,6 +425,45 @@ async function computeAvgColor(source) {
   });
 }
 
+// Sample an image to estimate what % of its pixels are near-white
+// (#ffffff-ish). Used to flag photos that were cropped too loosely, leaving
+// too much white background in the shot.
+async function computeWhiteRatio(source) {
+  const WHITE_THRESHOLD = 245; // r,g,b all >= this counts as "near-white"
+  const ALPHA_THRESHOLD = 16;  // pixels with alpha below this are skipped (transparent)
+  const SAMPLE = 80;           // downscale for speed — ratio doesn't need full res
+
+  const fromImage = (img) => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = SAMPLE; canvas.height = SAMPLE;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
+      const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
+      let white = 0, opaque = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const pr = data[i], pg = data[i + 1], pb = data[i + 2], pa = data[i + 3];
+        if (pa < ALPHA_THRESHOLD) continue; // transparent — doesn't count either way
+        opaque++;
+        if (pr >= WHITE_THRESHOLD && pg >= WHITE_THRESHOLD && pb >= WHITE_THRESHOLD) white++;
+      }
+      if (opaque === 0) return null;
+      return white / opaque;
+    } catch {
+      return null; // e.g. canvas tainted by CORS
+    }
+  };
+
+  if (source instanceof HTMLImageElement) return fromImage(source);
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(source);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(fromImage(img)); };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
 // Load a remote image URL (e.g. a Vercel Blob URL) into an Image element with
 // CORS enabled, so its pixels can be read by canvas. Used for backfilling
 // avgColor on cans that already exist without it.
@@ -3665,6 +3704,7 @@ function StatsPage({ T, L, isAdmin }) {
             if (uw) setWishes(p => p.map(w => uw[w.id] ? { ...w, image: uw[w.id] } : w));
           }} />
         <OrphanCleanupTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos} />
+        <BadCropAuditTool T={T} cans={cans} wishes={wishes} />
       </div>}
     </div>
   );
@@ -3835,6 +3875,117 @@ function OrphanCleanupTool({ T, cans, wishes, wallPhotos = [] }) {
             {log.map((l, i) => <div key={i}>{l}</div>)}
           </div>
           {state === "done" && <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: "#22C55E", marginTop: 8, fontStyle: "italic" }}>Done! {count.done} file{count.done !== 1 ? "s" : ""} deleted.</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── BAD CROP AUDIT TOOL ────────────────────────────────────────────────────
+// Scans every can/wish photo for how much of the frame is near-white pixels
+// (#ffffff-ish background) — a high ratio usually means the photo was
+// cropped too loosely and should be tightened up.
+
+function BadCropAuditTool({ T, cans, wishes }) {
+  const [state, setState] = useState("idle"); // idle | scanning | done
+  const [threshold, setThreshold] = useState(35); // % white pixels to flag
+  const [results, setResults] = useState([]); // [{ item, kind, ratio }]
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+
+  const targets = [
+    ...cans.filter(c => c.image).map(c => ({ item: c, kind: "can" })),
+    ...wishes.filter(w => w.image).map(w => ({ item: w, kind: "wish" })),
+  ];
+
+  const scan = async () => {
+    setState("scanning");
+    setProgress({ done: 0, total: targets.length });
+    const found = [];
+    let done = 0;
+    for (const { item, kind } of targets) {
+      try {
+        const img = await loadImageCrossOrigin(item.image);
+        const ratio = await computeWhiteRatio(img);
+        if (ratio != null) found.push({ item, kind, ratio });
+      } catch {
+        // unreadable image — the orphan/broken-image tools handle those separately
+      }
+      done++;
+      setProgress({ done, total: targets.length });
+    }
+    found.sort((a, b) => b.ratio - a.ratio);
+    setResults(found);
+    setState("done");
+  };
+
+  const flagged = results.filter(r => r.ratio * 100 >= threshold);
+
+  return (
+    <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginTop: 12 }}>
+      <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 8 }}>
+        ✂️ BAD CROP AUDIT
+      </p>
+
+      {state === "idle" && (
+        <>
+          <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
+            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop.
+          </p>
+          <button onClick={scan} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
+            🔍 SCAN PHOTOS
+          </button>
+        </>
+      )}
+
+      {state === "scanning" && (
+        <>
+          <div style={{ height: 8, borderRadius: 999, background: T.bgInput, overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ height: "100%", background: "#C8102E", width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`, transition: "width 0.2s" }} />
+          </div>
+          <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textMuted, letterSpacing: "0.1em" }}>
+            ⏳ {progress.done} / {progress.total}…
+          </p>
+        </>
+      )}
+
+      {state === "done" && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+            <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textMuted, letterSpacing: "0.05em" }}>
+              Flag threshold: {threshold}% white
+            </label>
+            <input type="range" min="10" max="80" step="5" value={threshold} onChange={e => setThreshold(Number(e.target.value))} style={{ flex: 1, minWidth: 100 }} />
+            <button onClick={scan} style={{ background: "none", border: `1.5px solid ${T.border}`, borderRadius: 8, padding: "5px 12px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.08em", cursor: "pointer" }}>
+              ↻ RESCAN
+            </button>
+          </div>
+
+          {flagged.length === 0 ? (
+            <p style={{ fontFamily: "Georgia,serif", fontSize: 13, color: "#22C55E", fontStyle: "italic" }}>
+              ✅ No photos above {threshold}% white — crops look tight!
+            </p>
+          ) : (
+            <>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.1em", marginBottom: 8 }}>
+                {flagged.length} OF {results.length} PHOTOS FLAGGED
+              </p>
+              <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+                {flagged.map(({ item, kind, ratio }) => (
+                  <div key={`${kind}-${item.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8 }}>
+                    <img src={item.image} alt="" style={{ width: 32, height: 48, objectFit: "contain", borderRadius: 3, flexShrink: 0, background: "#fff" }} onError={e => e.target.style.display = "none"} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {item.name}
+                      </div>
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.1em" }}>
+                        {kind === "wish" ? "WISHLIST" : "COLLECTION"} · {Math.round(ratio * 100)}% white
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
