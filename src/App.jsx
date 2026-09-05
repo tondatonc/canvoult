@@ -3721,7 +3721,16 @@ function StatsPage({ T, L, isAdmin }) {
             if (uw) setWishes(p => p.map(w => uw[w.id] ? { ...w, image: uw[w.id] } : w));
           }} />
         <OrphanCleanupTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos} />
-        <BadCropAuditTool T={T} cans={cans} wishes={wishes} />
+        <BadCropAuditTool T={T} cans={cans} wishes={wishes}
+          onSaveCan={async (can) => {
+            if (db.isConfigured()) await db.upsertCan(can).catch(console.error);
+            setCans(p => p.map(c => c.id === can.id ? can : c));
+          }}
+          onSaveWish={async (w) => {
+            if (db.isConfigured()) await db.upsertWish(w).catch(console.error);
+            setWishes(p => p.map(x => x.id === w.id ? w : x));
+          }}
+        />
       </div>}
     </div>
   );
@@ -3903,16 +3912,18 @@ function OrphanCleanupTool({ T, cans, wishes, wallPhotos = [] }) {
 // (#ffffff-ish background) — a high ratio usually means the photo was
 // cropped too loosely and should be tightened up.
 
-function BadCropAuditTool({ T, cans, wishes }) {
+function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
   const [state, setState] = useState("idle"); // idle | scanning | done
   const [threshold, setThreshold] = useState(35); // % white pixels to flag
   const [results, setResults] = useState([]); // [{ item, kind, ratio, bbox }]
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [editEntry, setEditEntry] = useState(null); // { item, kind, ratio } currently being cropped/edited
 
   const targets = [
     ...cans.filter(c => c.image).map(c => ({ item: c, kind: "can" })),
     ...wishes.filter(w => w.image).map(w => ({ item: w, kind: "wish" })),
   ];
+  const allTags = [...new Set([...cans, ...wishes].flatMap(c => c.tags || []))];
 
   const scan = async () => {
     setState("scanning");
@@ -3935,10 +3946,31 @@ function BadCropAuditTool({ T, cans, wishes }) {
     setState("done");
   };
 
+  // After a re-crop is saved, drop it from the flagged list — it's been
+  // reviewed. A rescan will re-flag it if it's genuinely still too loose.
+  const handleSaved = async (updated) => {
+    if (editEntry.kind === "wish") await onSaveWish(updated);
+    else await onSaveCan(updated);
+    setResults(rs => rs.filter(r => !(r.kind === editEntry.kind && r.item.id === editEntry.item.id)));
+    setEditEntry(null);
+  };
+
   const flagged = results.filter(r => r.ratio * 100 >= threshold);
 
   return (
     <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginTop: 12 }}>
+      {editEntry && (
+        <AddEditModal
+          T={T}
+          initial={editEntry.item}
+          extraFields={editEntry.kind === "wish" ? ["note"] : []}
+          folder={editEntry.kind === "wish" ? "wishlist" : "collection"}
+          allTags={allTags}
+          onSave={handleSaved}
+          onClose={() => setEditEntry(null)}
+        />
+      )}
+
       <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 8 }}>
         ✂️ BAD CROP AUDIT
       </p>
@@ -3946,7 +3978,7 @@ function BadCropAuditTool({ T, cans, wishes }) {
       {state === "idle" && (
         <>
           <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
-            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop. Flagged photos show a guide box around the detected content, so you can see exactly where to crop.
+            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop. Tap a flagged photo to re-crop and re-upload it.
           </p>
           <button onClick={scan} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
             🔍 SCAN PHOTOS
@@ -3977,6 +4009,12 @@ function BadCropAuditTool({ T, cans, wishes }) {
             </button>
           </div>
 
+          {flagged.length > 0 && (
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.05em", marginBottom: 10, fontStyle: "italic" }}>
+              Tap a photo to re-crop and re-upload it.
+            </p>
+          )}
+
           {flagged.length === 0 ? (
             <p style={{ fontFamily: "Georgia,serif", fontSize: 13, color: "#22C55E", fontStyle: "italic" }}>
               ✅ No photos above {threshold}% white — crops look tight!
@@ -3988,7 +4026,8 @@ function BadCropAuditTool({ T, cans, wishes }) {
               </p>
               <div style={{ maxHeight: "50vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
                 {flagged.map(({ item, kind, ratio }) => (
-                  <div key={`${kind}-${item.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8 }}>
+                  <div key={`${kind}-${item.id}`} onClick={() => setEditEntry({ item, kind, ratio })}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8, cursor: "pointer" }}>
                     <div style={{
                       position: "relative", width: 64, height: 96, flexShrink: 0, borderRadius: 4, overflow: "hidden",
                       border: "2px solid #000",
@@ -4007,6 +4046,7 @@ function BadCropAuditTool({ T, cans, wishes }) {
                         {kind === "wish" ? "WISHLIST" : "COLLECTION"} · {Math.round(ratio * 100)}% white
                       </div>
                     </div>
+                    <div style={{ fontSize: 16, color: T.textFaint, flexShrink: 0 }}>✂️</div>
                   </div>
                 ))}
               </div>
