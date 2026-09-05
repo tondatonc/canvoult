@@ -426,12 +426,14 @@ async function computeAvgColor(source) {
 }
 
 // Sample an image to estimate what % of its pixels are near-white
-// (#ffffff-ish). Used to flag photos that were cropped too loosely, leaving
-// too much white background in the shot.
-async function computeWhiteRatio(source) {
+// (#ffffff-ish), AND find the bounding box of the non-white content —
+// i.e. where a tight crop would actually land. Used to flag photos that
+// were cropped too loosely, leaving too much white background in the shot,
+// and to draw a "this is where it should be cropped" guide over the photo.
+async function computeCropInfo(source) {
   const WHITE_THRESHOLD = 245; // r,g,b all >= this counts as "near-white"
   const ALPHA_THRESHOLD = 16;  // pixels with alpha below this are skipped (transparent)
-  const SAMPLE = 80;           // downscale for speed — ratio doesn't need full res
+  const SAMPLE = 80;           // downscale for speed — doesn't need full res
 
   const fromImage = (img) => {
     try {
@@ -441,14 +443,29 @@ async function computeWhiteRatio(source) {
       ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
       const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
       let white = 0, opaque = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        const pr = data[i], pg = data[i + 1], pb = data[i + 2], pa = data[i + 3];
-        if (pa < ALPHA_THRESHOLD) continue; // transparent — doesn't count either way
-        opaque++;
-        if (pr >= WHITE_THRESHOLD && pg >= WHITE_THRESHOLD && pb >= WHITE_THRESHOLD) white++;
+      let minX = SAMPLE, minY = SAMPLE, maxX = -1, maxY = -1;
+      for (let y = 0; y < SAMPLE; y++) {
+        for (let x = 0; x < SAMPLE; x++) {
+          const i = (y * SAMPLE + x) * 4;
+          const pr = data[i], pg = data[i + 1], pb = data[i + 2], pa = data[i + 3];
+          if (pa < ALPHA_THRESHOLD) continue; // transparent — doesn't count either way
+          opaque++;
+          const isWhite = pr >= WHITE_THRESHOLD && pg >= WHITE_THRESHOLD && pb >= WHITE_THRESHOLD;
+          if (isWhite) { white++; continue; }
+          // non-white, non-transparent — part of the actual can/content
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
       }
       if (opaque === 0) return null;
-      return white / opaque;
+      const ratio = white / opaque;
+      // bbox as fractions (0-1) of width/height, or null if no content found
+      const bbox = maxX >= minX && maxY >= minY
+        ? { left: minX / SAMPLE, top: minY / SAMPLE, right: (maxX + 1) / SAMPLE, bottom: (maxY + 1) / SAMPLE }
+        : null;
+      return { ratio, bbox };
     } catch {
       return null; // e.g. canvas tainted by CORS
     }
@@ -3889,7 +3906,7 @@ function OrphanCleanupTool({ T, cans, wishes, wallPhotos = [] }) {
 function BadCropAuditTool({ T, cans, wishes }) {
   const [state, setState] = useState("idle"); // idle | scanning | done
   const [threshold, setThreshold] = useState(35); // % white pixels to flag
-  const [results, setResults] = useState([]); // [{ item, kind, ratio }]
+  const [results, setResults] = useState([]); // [{ item, kind, ratio, bbox }]
   const [progress, setProgress] = useState({ done: 0, total: 0 });
 
   const targets = [
@@ -3905,8 +3922,8 @@ function BadCropAuditTool({ T, cans, wishes }) {
     for (const { item, kind } of targets) {
       try {
         const img = await loadImageCrossOrigin(item.image);
-        const ratio = await computeWhiteRatio(img);
-        if (ratio != null) found.push({ item, kind, ratio });
+        const info = await computeCropInfo(img);
+        if (info != null) found.push({ item, kind, ratio: info.ratio, bbox: info.bbox });
       } catch {
         // unreadable image — the orphan/broken-image tools handle those separately
       }
@@ -3929,7 +3946,7 @@ function BadCropAuditTool({ T, cans, wishes }) {
       {state === "idle" && (
         <>
           <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
-            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop.
+            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop. Flagged photos show a guide box around the detected content, so you can see exactly where to crop.
           </p>
           <button onClick={scan} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
             🔍 SCAN PHOTOS
@@ -3950,7 +3967,7 @@ function BadCropAuditTool({ T, cans, wishes }) {
 
       {state === "done" && (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
             <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textMuted, letterSpacing: "0.05em" }}>
               Flag threshold: {threshold}% white
             </label>
@@ -3959,6 +3976,12 @@ function BadCropAuditTool({ T, cans, wishes }) {
               ↻ RESCAN
             </button>
           </div>
+
+          {flagged.length > 0 && (
+            <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.05em", marginBottom: 10, display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid #22C55E", borderRadius: 2 }} /> = detected content — crop to this box
+            </p>
+          )}
 
           {flagged.length === 0 ? (
             <p style={{ fontFamily: "Georgia,serif", fontSize: 13, color: "#22C55E", fontStyle: "italic" }}>
@@ -3969,10 +3992,24 @@ function BadCropAuditTool({ T, cans, wishes }) {
               <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#C8102E", letterSpacing: "0.1em", marginBottom: 8 }}>
                 {flagged.length} OF {results.length} PHOTOS FLAGGED
               </p>
-              <div style={{ maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
-                {flagged.map(({ item, kind, ratio }) => (
-                  <div key={`${kind}-${item.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8 }}>
-                    <img src={item.image} alt="" style={{ width: 32, height: 48, objectFit: "contain", borderRadius: 3, flexShrink: 0, background: "#fff" }} onError={e => e.target.style.display = "none"} />
+              <div style={{ maxHeight: "50vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                {flagged.map(({ item, kind, ratio, bbox }) => (
+                  <div key={`${kind}-${item.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8 }}>
+                    <div style={{ position: "relative", width: 64, height: 96, flexShrink: 0, background: "#fff", borderRadius: 4, overflow: "hidden" }}>
+                      <img src={item.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => e.target.style.display = "none"} />
+                      {bbox && (
+                        <div style={{
+                          position: "absolute",
+                          left: `${bbox.left * 100}%`,
+                          top: `${bbox.top * 100}%`,
+                          width: `${(bbox.right - bbox.left) * 100}%`,
+                          height: `${(bbox.bottom - bbox.top) * 100}%`,
+                          border: "2px solid #22C55E",
+                          boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
+                          pointerEvents: "none",
+                        }} />
+                      )}
+                    </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {item.name}
