@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import * as db from "./db.js";
 import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
+import { APP_VERSION } from "./version.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
 
@@ -3732,6 +3733,11 @@ function StatsPage({ T, L, isAdmin }) {
           }}
         />
       </div>}
+
+      {/* Version footer — visible to everyone, bumped at the end of every update */}
+      <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.15em", marginTop: 24 }}>
+        CANVAULT v{APP_VERSION}
+      </p>
     </div>
   );
 }
