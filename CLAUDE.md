@@ -1731,17 +1731,18 @@ Bumped `APP_VERSION` to `1.0.1` (patch — display-location change only).
 Files touched: `src/App.jsx`, `src/version.js`. Validated with
 `@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
 
-## 2026-09-06 (later still) — Header logo now uses site can.svg (v1.0.2)
+## 2026-09-06 (later still) — Page title emoji no longer italic (v1.0.3)
 
-Replaced the 🥤 emoji in the top-left header logo circle (next to the
-"CanVault" wordmark) with an `<img src="/can.svg" />` pointing at the
-existing site logo asset (`public/can.svg`), per user request/screenshot
-circling that spot. Rendered at 22x22 inside the existing 38x38 cream
-circle badge.
+The page `<h1>` (e.g. "🥤 The Collection") had `fontStyle: "italic"` applied
+to the whole string including the leading emoji icon, which visually
+slanted the emoji glyph. Split the icon and title into separate `<span>`s:
+icon stays `fontStyle: "normal"`, title text keeps `fontStyle: "italic"`.
 
-`src/App.jsx`: header logo `<div>` now contains `<img src="/can.svg" alt="CanVault" style={{ width: 22, height: 22 }} />` instead of the emoji text node.
+`src/App.jsx`: page title `<h1>` now renders
+`<span style={{fontStyle:"normal"}}>{icon}</span> <span style={{fontStyle:"italic"}}>{title}</span>`
+instead of italicizing the whole `<h1>`.
 
-Bumped `APP_VERSION` to `1.0.2` (patch — visual-only change).
+Bumped `APP_VERSION` to `1.0.3` (patch — visual-only change).
 
 Files touched: `src/App.jsx`, `src/version.js`. Validated with
 `@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
