@@ -1689,3 +1689,29 @@ modal render, handleSaved, clickable rows), `StatsPage` (two new
 onSaveCan/onSaveWish callbacks passed as props). No changes to
 `AddEditModal` or `CropModal` — reused as-is. Validated with
 `@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
+
+## 2026-09-06 — Version system introduced (v1.0.0)
+
+Added a version number so Tonda can tell at a glance whether the deployed
+site matches the latest code.
+
+**New file: `src/version.js`** — single source of truth, exports
+`APP_VERSION` (currently `"1.0.0"`). Comment in the file documents the
+bump convention: patch (1.0.x) for small fixes/tweaks, minor (1.x.0) for
+new features, major (x.0.0) for breaking/large changes.
+
+**`src/App.jsx` changes:**
+- Imports `APP_VERSION` from `./version.js`.
+- `StatsPage` renders a small centered footer below the admin tools
+  section (visible to everyone, not admin-gated): `CANVAULT v{APP_VERSION}`.
+
+**Workflow change — going forward:** at the end of every update session,
+bump `APP_VERSION` in `src/version.js` (patch/minor/major as appropriate)
+and add a new dated `##` entry here in `CLAUDE.md` describing what changed,
+*before* considering the session done. This makes the Stats page number a
+reliable indicator of "am I on the latest version" and keeps this diary
+in sync with every shipped change.
+
+Files touched: new `src/version.js`, `src/App.jsx` (import + Stats footer).
+Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
+Contents API.
