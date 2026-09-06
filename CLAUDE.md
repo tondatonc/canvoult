@@ -1730,3 +1730,18 @@ Bumped `APP_VERSION` to `1.0.1` (patch — display-location change only).
 
 Files touched: `src/App.jsx`, `src/version.js`. Validated with
 `@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
+
+## 2026-09-06 (later still) — Header logo now uses site can.svg (v1.0.2)
+
+Replaced the 🥤 emoji in the top-left header logo circle (next to the
+"CanVault" wordmark) with an `<img src="/can.svg" />` pointing at the
+existing site logo asset (`public/can.svg`), per user request/screenshot
+circling that spot. Rendered at 22x22 inside the existing 38x38 cream
+circle badge.
+
+`src/App.jsx`: header logo `<div>` now contains `<img src="/can.svg" alt="CanVault" style={{ width: 22, height: 22 }} />` instead of the emoji text node.
+
+Bumped `APP_VERSION` to `1.0.2` (patch — visual-only change).
+
+Files touched: `src/App.jsx`, `src/version.js`. Validated with
+`@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
