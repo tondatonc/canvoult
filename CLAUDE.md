@@ -1746,3 +1746,28 @@ Bumped `APP_VERSION` to `1.0.3` (patch — visual-only change).
 
 Files touched: `src/App.jsx`, `src/version.js`. Validated with
 `@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
+
+## 2026-09-06 (later still) — Header logo fix re-applied (v1.0.4)
+
+Found that the header logo `<img src="/can.svg">` change from the v1.0.2
+entry above had been lost — the header was back to rendering the 🥤
+emoji. Root cause: the v1.0.3 session pulled `src/App.jsx` via
+`raw.githubusercontent.com`, which appears to have served a stale
+(pre-v1.0.2) cached copy, so editing+pushing from that copy silently
+reverted the header logo change while applying the title-emoji-italic
+fix on top of the old file.
+
+Re-applied the header logo fix (same as v1.0.2: `<img src="/can.svg" alt="CanVault" style={{width:22,height:22}} />`
+inside the 38x38 cream circle badge). The "Collection" page-title emoji
+fix (non-italic icon span from v1.0.3) is intact and unaffected.
+
+**Lesson reinforced:** always verify pushes via the GitHub **Contents API**
+(`api.github.com`), not `raw.githubusercontent.com` — this session
+confirmed the CDN can stay stale long enough to cause a real regression,
+not just a slow-to-update verification check. Verified this push's
+content directly via the Contents API before writing this entry.
+
+Bumped `APP_VERSION` to `1.0.4` (patch — visual regression fix).
+
+Files touched: `src/App.jsx`, `src/version.js`. Validated with
+`@babel/parser` + `esbuild`, verified via the GitHub Contents API.
