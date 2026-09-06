@@ -1715,3 +1715,18 @@ in sync with every shipped change.
 Files touched: new `src/version.js`, `src/App.jsx` (import + Stats footer).
 Validated with `@babel/parser` + `esbuild`, verified live via the GitHub
 Contents API.
+
+## 2026-09-06 (later) — Version moved to global footer (v1.0.1)
+
+Moved the version display from the Stats-page-only footer to the site's
+actual global footer (the "CanVault / tagline" block at the bottom of
+`App.jsx`, rendered under every route), so it's visible on every page
+rather than just Stats. Removed the standalone Stats-page version line.
+
+`src/App.jsx`: global footer now renders a third line `v{APP_VERSION}`
+below the tagline. `StatsPage`'s separate version footer removed.
+
+Bumped `APP_VERSION` to `1.0.1` (patch — display-location change only).
+
+Files touched: `src/App.jsx`, `src/version.js`. Validated with
+`@babel/parser` + `esbuild`, verified live via the GitHub Contents API.
