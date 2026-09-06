@@ -3733,11 +3733,6 @@ function StatsPage({ T, L, isAdmin }) {
           }}
         />
       </div>}
-
-      {/* Version footer — visible to everyone, bumped at the end of every update */}
-      <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textFaint, letterSpacing: "0.15em", marginTop: 24 }}>
-        CANVAULT v{APP_VERSION}
-      </p>
     </div>
   );
 }
@@ -4446,6 +4441,7 @@ export default function App() {
       <div style={{ textAlign: "center", padding: "24px 20px", borderTop: `2px dashed ${T.border}`, marginTop: 20 }}>
         <p style={{ fontFamily: "'Satisfy',cursive", fontSize: 22, color: "#C8102E" }}>CanVault</p>
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.2em", marginTop: 4 }}>{L.tagline}</p>
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.15em", marginTop: 4 }}>v{APP_VERSION}</p>
       </div>
 
       {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
