@@ -4364,9 +4364,7 @@ export default function App() {
 
         <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button onClick={() => navigate("/")} style={{ display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-            <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0" }}>
-              <img src="/can.svg" alt="CanVault" style={{ width: 22, height: 22 }} />
-            </div>
+            <div style={{ width: 38, height: 38, background: "#FFF5E6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #FFE8D0", fontSize: 20 }}>🥤</div>
             <div>
               <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 26, color: "#FFF5E6", lineHeight: 1 }}>CanVault</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 7, color: "#FFD0C0", letterSpacing: "0.2em" }}>{L.collectionSub}</div>
@@ -4420,8 +4418,8 @@ export default function App() {
           </>}
         </div>
         <div style={{ maxWidth: 1100, margin: "4px auto 0" }}>
-          <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(22px,4vw,38px)", color: "#C8102E", fontWeight: 900, fontStyle: "italic", textShadow: "none", lineHeight: 1.1 }}>
-            {currentNav?.icon} {currentNav?.title}
+          <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(22px,4vw,38px)", color: "#C8102E", fontWeight: 900, textShadow: "none", lineHeight: 1.1 }}>
+            <span style={{ fontStyle: "normal" }}>{currentNav?.icon}</span> <span style={{ fontStyle: "italic" }}>{currentNav?.title}</span>
           </h1>
         </div>
       </div>
