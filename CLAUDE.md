@@ -1771,3 +1771,29 @@ Bumped `APP_VERSION` to `1.0.4` (patch — visual regression fix).
 
 Files touched: `src/App.jsx`, `src/version.js`. Validated with
 `@babel/parser` + `esbuild`, verified via the GitHub Contents API.
+
+
+## 2026-09-16 — Keyboard shortcuts, duplicate scanner, bulk upload item removal (v1.1.0)
+
+Three features added in one session:
+
+**Keyboard shortcuts** (Collection page + global):
+- "/" focus search, "R" random can, "1"/"2"/"3"/"4" switch view mode (tile/grid2/grid3/grid4)
+- Admin: "N" add can, "B" bulk upload, "D" duplicate scan
+- In can detail view: left/right arrows browse to prev/next can in the current filtered list (with visible chevron buttons either side of the photo), "E" edit (admin), "Delete" remove (admin, with confirm)
+- "Esc" closes any open modal (added to ModalShell itself, respects confirmClose)
+- "?" opens a new Keyboard Shortcuts help modal (also reachable from the hamburger menu) — global, works on every page
+- All shortcuts are ignored while focus is in any input/textarea/select/contentEditable, so typing is never hijacked
+
+**Duplicate detection**:
+- New findDuplicateGroups() — normalizes can names (lowercase, strips punctuation, strips "(copy)"/"copy N" suffixes from the existing COPY button), groups exact normalized-name matches, and also flags near-matches (Dice/bigram coefficient >= 0.72) that additionally share a tag or country (similarity alone was too prone to false positives like "Cola Zero" vs "Cola Light")
+- Union-find so chains of matches (A~B, B~C) merge into one group instead of overlapping pairs
+- New "DUPLICATES (n)" button in the admin toolbar opens DuplicateScanModal, listing each group with thumbnails, added-date, a per-can DELETE button (with confirm, goes through the existing removeCan), and a "NOT A DUPLICATE" dismiss (session-only, not persisted)
+- Orange warning banner appears above the collection (admin only) whenever duplicate groups exist, click-through to the scan modal
+- Recomputed via useMemo on the cans array — fine for realistic collection sizes (O(n^2) pairwise scan)
+
+**Bulk upload — delete individual items**:
+- Each queued (not-yet-uploaded) photo in BulkUploadModal now has a delete button next to its status icon to drop it from the queue before upload, with a confirm prompt
+- removeItem(i) reindexes the per-index state maps (perTagInput, perTagSuggestions, perItemDates) so they stay aligned after an item is spliced out of the middle of the queue
+
+No schema changes, no new dependencies. All existing modals unaffected.
