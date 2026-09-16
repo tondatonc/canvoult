@@ -962,6 +962,13 @@ function ModalShell({ onClose, children, T, preventBackdropClose = false, confir
     if (confirmClose && !window.confirm(confirmClose)) return;
     onClose();
   };
+  // Escape closes the modal (respecting confirmClose, same as the backdrop/× button).
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") handleClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div onClick={preventBackdropClose ? undefined : handleClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000000bb", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{
@@ -1532,7 +1539,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
 
 // ─── DETAIL MODAL ─────────────────────────────────────────────────────────────
 
-function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {}, onCountryExpanded }) {
+function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {}, onCountryExpanded, onPrev, onNext }) {
   const color = getCanColor(can.tags, customColors);
   const [copied, setCopied] = useState(false);
 
@@ -1543,6 +1550,22 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
     const changed = expanded.some((e, i) => e !== can.countries[i]);
     if (changed) onCountryExpanded?.({ ...can, countries: expanded });
   }, [can.id]);
+
+  // Keyboard shortcuts: ←/→ browse to the previous/next can in the current
+  // filtered list, E to edit, Delete to remove (admin only). Ignored while
+  // typing anywhere (there's no text input in this view, but stay safe).
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || document.activeElement?.isContentEditable) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); onPrev?.(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); onNext?.(); }
+      else if (isAdmin && (e.key === "e" || e.key === "E")) { e.preventDefault(); onEdit?.(); }
+      else if (isAdmin && e.key === "Delete") { e.preventDefault(); if (window.confirm(`Delete "${can.name}"? This can't be undone.`)) { onDelete(can.id); onClose(); } }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [can.id, isAdmin, onPrev, onNext, onEdit, onDelete, onClose]);
 
   const resolvedCountries = can.countries?.map(c => resolveCountry(c)).filter(Boolean) || [];
 
@@ -1560,10 +1583,18 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ width: "min(220px, 55vw)", margin: "0 auto 16px", filter: "drop-shadow(0 8px 18px #00000022)" }}>
-          {can.image
-            ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "auto", maxHeight: "45vh", objectFit: "contain", borderRadius: 10 }} />
-            : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+          {(onPrev || onNext) && (
+            <button onClick={onPrev} title="Previous can (←)" style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "50%", width: 30, height: 30, color: T.textMuted, cursor: "pointer", fontSize: 15, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+          )}
+          <div style={{ width: "min(220px, 55vw)", filter: "drop-shadow(0 8px 18px #00000022)" }}>
+            {can.image
+              ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "auto", maxHeight: "45vh", objectFit: "contain", borderRadius: 10 }} />
+              : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
+          </div>
+          {(onPrev || onNext) && (
+            <button onClick={onNext} title="Next can (→)" style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "50%", width: 30, height: 30, color: T.textMuted, cursor: "pointer", fontSize: 15, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+          )}
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 26, padding: "6px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
         <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
@@ -1598,6 +1629,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
             <button onClick={() => { onDelete(can.id); onClose(); }} style={{ background: "transparent", border: "2px solid #C8102E66", borderRadius: 9, padding: "9px 16px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>REMOVE</button>
           </div>
         )}
+        {isAdmin && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.08em", marginTop: 10 }}>← → BROWSE · E EDIT · DELETE REMOVE</p>}
       </div>
     </ModalShell>
   );
@@ -1729,6 +1761,26 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
   };
 
   const updateItem = (i, patch) => setQueue(q => q.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+
+  // Remove one photo from the queue before it's uploaded. Reindexes the
+  // per-index state maps (tag input/suggestions, per-item dates) so they stay
+  // aligned with the shifted queue array.
+  const removeItem = (i) => {
+    setQueue(q => q.filter((_, idx) => idx !== i));
+    const reindex = (obj) => {
+      const next = {};
+      Object.keys(obj).forEach(k => {
+        const idx = Number(k);
+        if (idx < i) next[idx] = obj[k];
+        else if (idx > i) next[idx - 1] = obj[k];
+        // idx === i is dropped
+      });
+      return next;
+    };
+    setPerTagInput(reindex);
+    setPerTagSuggestions(reindex);
+    setPerItemDates(reindex);
+  };
 
   const handleCropped = (i, croppedFile) => {
     const url = URL.createObjectURL(croppedFile);
@@ -1975,10 +2027,19 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
                     {item.err && <p style={{ color: "#FF4444", fontFamily: "'Oswald',sans-serif", fontSize: 9, marginTop: 4 }}>❌ {item.err}</p>}
                   </div>
 
-                  {/* Status icon */}
-                  <div style={{ flexShrink: 0, fontSize: 18 }}>
-                    {item.uploading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
-                      : item.done ? "✅" : item.err ? "❌" : "⏸️"}
+                  {/* Status icon + remove-from-queue */}
+                  <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>
+                      {item.uploading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
+                        : item.done ? "✅" : item.err ? "❌" : "⏸️"}
+                    </span>
+                    {!item.done && !item.uploading && (
+                      <button
+                        onClick={() => { if (window.confirm(`Remove "${item.name || "this photo"}" from the upload queue?`)) removeItem(i); }}
+                        title="Remove from queue"
+                        style={{ background: "transparent", border: `1.5px solid #C8102E66`, borderRadius: 6, padding: "2px 6px", color: "#C8102E", fontSize: 11, cursor: "pointer", lineHeight: 1.4 }}
+                      >🗑</button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2303,6 +2364,168 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
               {log.map((l, i) => <div key={i}>{l}</div>)}
             </div>
           )}
+        </>
+      )}
+    </ModalShell>
+  );
+}
+
+// ─── DUPLICATE DETECTION ──────────────────────────────────────────────────────
+// Groups cans that are likely the same physical can added more than once.
+// Two signals, either of which counts as a match between a pair of cans:
+//   1. Normalized names are identical (case/whitespace/punctuation-insensitive,
+//      and common "(copy)"/"copy 2" suffixes from the COPY button are stripped).
+//   2. Normalized names are highly similar (bigram/Dice coefficient) AND the
+//      cans share at least one tag or country — similarity alone is too loose
+//      (e.g. "Cola Zero" vs "Cola Light"), but similarity + shared metadata is
+//      a strong signal without needing real image hashing.
+// Matches are grouped with union-find so a chain of pairwise matches (A~B, B~C)
+// surfaces as one group of three rather than two separate pairs.
+function normalizeCanName(name) {
+  return (name || "")
+    .toLowerCase()
+    .replace(/\(copy(?:\s*\d*)?\)/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+\d+$/, "") // trailing " 2", " 3" from repeated copies
+    .trim();
+}
+
+function bigrams(s) {
+  const out = new Set();
+  for (let i = 0; i < s.length - 1; i++) out.add(s.slice(i, i + 2));
+  return out;
+}
+
+function diceCoefficient(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const A = bigrams(a), B = bigrams(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let overlap = 0;
+  for (const g of A) if (B.has(g)) overlap++;
+  return (2 * overlap) / (A.size + B.size);
+}
+
+function findDuplicateGroups(cans, { similarityThreshold = 0.72 } = {}) {
+  const n = cans.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+
+  const normalized = cans.map(c => normalizeCanName(c.name));
+  const reasons = new Map(); // "i-j" -> reason string, for display
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (!normalized[i] || !normalized[j]) continue;
+      const exact = normalized[i] === normalized[j];
+      let matched = false, reason = "";
+      if (exact) {
+        matched = true; reason = "same name";
+      } else {
+        const sim = diceCoefficient(normalized[i], normalized[j]);
+        if (sim >= similarityThreshold) {
+          const sharedTag = (cans[i].tags || []).some(t => (cans[j].tags || []).includes(t));
+          const sharedCountry = (cans[i].countries || []).some(c => (cans[j].countries || []).includes(c));
+          if (sharedTag || sharedCountry) {
+            matched = true; reason = `similar name (${Math.round(sim * 100)}%)`;
+          }
+        }
+      }
+      if (matched) { union(i, j); reasons.set(`${i}-${j}`, reason); }
+    }
+  }
+
+  const groups = new Map(); // root -> [indices]
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(i);
+  }
+
+  return [...groups.values()]
+    .filter(idxs => idxs.length > 1)
+    .map(idxs => {
+      // Pick the best available reason within the group for display
+      let reason = "similar name";
+      for (let a = 0; a < idxs.length; a++) {
+        for (let b = a + 1; b < idxs.length; b++) {
+          const r = reasons.get(`${idxs[a]}-${idxs[b]}`) || reasons.get(`${idxs[b]}-${idxs[a]}`);
+          if (r === "same name") { reason = r; break; }
+          if (r) reason = r;
+        }
+      }
+      return { cans: idxs.map(i => cans[i]).sort((a, b) => a.addedAt - b.addedAt), reason };
+    })
+    .sort((a, b) => b.cans.length - a.cans.length);
+}
+
+// ─── DUPLICATE SCAN MODAL ─────────────────────────────────────────────────────
+
+function DuplicateScanModal({ T, cans, onDeleteCan, onClose }) {
+  const [dismissed, setDismissed] = useState(new Set()); // group keys dismissed this session
+  const [deleting, setDeleting] = useState(null);
+
+  const groups = useMemo(() => findDuplicateGroups(cans), [cans]);
+  const groupKey = g => g.cans.map(c => c.id).join("|");
+  const visibleGroups = groups.filter(g => !dismissed.has(groupKey(g)));
+
+  const handleDelete = async (id) => {
+    setDeleting(id);
+    await onDeleteCan(id);
+    setDeleting(null);
+  };
+
+  return (
+    <ModalShell onClose={onClose} T={T}>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>
+        🔎 Duplicate Scan
+      </div>
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
+
+      {visibleGroups.length === 0 ? (
+        <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.05em" }}>
+          ✅ No likely duplicates found in your collection.
+        </p>
+      ) : (
+        <>
+          <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textMuted, letterSpacing: "0.05em", marginBottom: 16 }}>
+            Found {visibleGroups.length} possible duplicate group{visibleGroups.length === 1 ? "" : "s"}. Review and remove the ones you don't need.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {visibleGroups.map(g => {
+              const key = groupKey(g);
+              return (
+                <div key={key} style={{ background: "#C8102E0a", border: `1.5px solid #C8102E33`, borderRadius: 12, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#C8102E", letterSpacing: "0.1em" }}>
+                      ⚠️ {g.reason.toUpperCase()}
+                    </span>
+                    <button onClick={() => setDismissed(s => new Set(s).add(key))}
+                      style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.05em" }}>
+                      NOT A DUPLICATE
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {g.cans.map(c => (
+                      <div key={c.id} style={{ width: 108, background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 9, padding: 7, textAlign: "center" }}>
+                        <img src={c.image} alt={c.name} style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6, marginBottom: 5, display: "block", background: T.bgInput }} />
+                        <p style={{ fontFamily: "Georgia,serif", fontSize: 10.5, color: T.text, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</p>
+                        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.05em", marginBottom: 6 }}>{c.dateUnknown ? "DATE UNKNOWN" : fmtDate(c.addedAt)}</p>
+                        <button
+                          onClick={() => { if (window.confirm(`Delete "${c.name}"? This can't be undone.`)) handleDelete(c.id); }}
+                          disabled={deleting === c.id}
+                          style={{ width: "100%", padding: "5px 0", background: "transparent", border: "1.5px solid #C8102E66", borderRadius: 6, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.05em", cursor: deleting === c.id ? "wait" : "pointer" }}>
+                          {deleting === c.id ? "…" : "🗑 DELETE"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </>
       )}
     </ModalShell>
@@ -2648,6 +2871,34 @@ function CollectionPage({ T, L, isAdmin }) {
     setCans(p => p.filter(c => c.id !== id));
   };
 
+  // Duplicate detection — recomputed whenever the collection changes.
+  const duplicateGroups = useMemo(() => findDuplicateGroups(cans), [cans]);
+
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────
+  // Ignored while typing in any input/textarea/select or while a modal is
+  // open (except the DetailModal's own arrow-key navigation, handled there).
+  const searchInputRef = useRef(null);
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || document.activeElement?.isContentEditable;
+      if (isTyping) return; // never hijack keys while the person is typing somewhere
+      if (modal) return; // let open modals (DetailModal, etc.) own the keyboard
+      if (e.key === "/") { e.preventDefault(); searchInputRef.current?.focus(); return; }
+      if (e.key === "r" || e.key === "R") { if (allFiltered.length > 0) setModal({ can: allFiltered[Math.floor(Math.random() * allFiltered.length)] }); return; }
+      if (e.key === "1") { setViewMode("tile"); return; }
+      if (e.key === "2") { setViewMode("grid2"); return; }
+      if (e.key === "3") { setViewMode("grid3"); return; }
+      if (e.key === "4") { setViewMode("grid4"); return; }
+      if (!isAdmin) return;
+      if (e.key === "n" || e.key === "N") { setModal("add"); return; }
+      if (e.key === "b" || e.key === "B") { setModal("bulk"); return; }
+      if (e.key === "d" || e.key === "D") { setModal("duplicates"); return; }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [modal, allFiltered, isAdmin]);
+
   return (
     <div>
       {!db.isConfigured() && (
@@ -2660,13 +2911,19 @@ function CollectionPage({ T, L, isAdmin }) {
           ⚠️ COULDN'T LOAD YOUR CANS FROM SUPABASE — showing sample data instead. <span style={{ fontFamily: "monospace", letterSpacing: "normal", opacity: 0.8 }}>{loadError}</span>
         </div>
       )}
+      {isAdmin && !loading && duplicateGroups.length > 0 && (
+        <div onClick={() => setModal("duplicates")} style={{ cursor: "pointer", background: "#FF6B0022", border: "2px solid #FF6B00", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 10, color: "#FF6B00", letterSpacing: "0.1em", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+          <span>⚠️ {duplicateGroups.length} POSSIBLE DUPLICATE GROUP{duplicateGroups.length === 1 ? "" : "S"} FOUND</span>
+          <span style={{ textDecoration: "underline" }}>REVIEW →</span>
+        </div>
+      )}
       {loading ? <LoadingSpinner T={T} /> : <>
       {/* Controls stay at a comfortable reading width even when the page itself goes full-bleed */}
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* Search */}
       <div data-tut="search" style={{ position: "relative", marginBottom: 14 }}>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#C8102E", borderRadius: "11px 0 0 11px", fontSize: 17 }}>🔍</div>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or tag…"
+        <input ref={searchInputRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or tag… (press / to focus)"
           style={{ width: "100%", padding: "13px 36px 13px 52px", background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 11, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
         {search && <button onClick={() => setSearch("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: 18 }}>×</button>}
       </div>
@@ -2682,6 +2939,9 @@ function CollectionPage({ T, L, isAdmin }) {
             <button onClick={() => setModal("bulktag")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.bulkTags}</button>
             <button onClick={() => setModal("colors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.colors}</button>
             <button onClick={() => setModal("recomputeColors")} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: "999px", padding: "7px 14px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>{L.recomputeColors}</button>
+            <button onClick={() => setModal("duplicates")} title="Scan for duplicate cans (shortcut: D)" style={{ background: duplicateGroups.length > 0 ? "#FF6B0022" : T.bgCard, border: `2px solid ${duplicateGroups.length > 0 ? "#FF6B00" : T.border}`, borderRadius: "999px", padding: "7px 14px", color: duplicateGroups.length > 0 ? "#FF6B00" : T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>
+              🔎 DUPLICATES{duplicateGroups.length > 0 ? ` (${duplicateGroups.length})` : ""}
+            </button>
             <button onClick={() => setModal("add")} style={{ background: "#C8102E", border: "none", borderRadius: "999px", padding: "7px 16px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>{L.addCan}</button>
           </>
         )}
@@ -2734,6 +2994,7 @@ function CollectionPage({ T, L, isAdmin }) {
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTagsRaw} customColors={customColors} tagRoles={tagRoles} onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }} onClose={() => setModal(null)} />}
       {modal === "recomputeColors" && <RecomputeColorsModal T={T} cans={cans} onSaveCan={can => saveCan(can, { closeModal: false, refetch: false })} onClose={() => setModal(null)} />}
+      {modal === "duplicates" && <DuplicateScanModal T={T} cans={cans} onDeleteCan={removeCan} onClose={() => setModal(null)} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
           onDelete={id => { removeCan(id); setModal(null); }}
@@ -2742,6 +3003,14 @@ function CollectionPage({ T, L, isAdmin }) {
           onCountryExpanded={async updated => {
             if (db.isConfigured()) await db.upsertCan(updated).catch(console.error);
             setCans(p => p.map(c => c.id === updated.id ? updated : c));
+          }}
+          onPrev={() => {
+            const idx = allFiltered.findIndex(c => c.id === modal.can.id);
+            if (idx > 0) setModal({ can: allFiltered[idx - 1] });
+          }}
+          onNext={() => {
+            const idx = allFiltered.findIndex(c => c.id === modal.can.id);
+            if (idx >= 0 && idx < allFiltered.length - 1) setModal({ can: allFiltered[idx + 1] });
           }}
           onClose={() => setModal(null)} />
       )}
@@ -4164,14 +4433,64 @@ function TutorialOverlay({ steps, onClose, T }) {
   );
 }
 
+// ─── SHORTCUTS HELP MODAL ─────────────────────────────────────────────────────
+function ShortcutsHelpModal({ T, isAdmin, onClose }) {
+  const rows = [
+    ["/", "Focus search"],
+    ["← / →", "Browse to previous / next can (in detail view)"],
+    ["1 / 2 / 3 / 4", "Switch view: list / 2-grid / 3-grid / 4-grid"],
+    ["R", "Jump to a random can"],
+    ["Esc", "Close the open modal"],
+    ["?", "Show this help"],
+  ];
+  const adminRows = [
+    ["N", "Add a new can"],
+    ["B", "Open bulk upload"],
+    ["D", "Scan for duplicates"],
+    ["E", "Edit the open can"],
+    ["Delete", "Remove the open can"],
+  ];
+  return (
+    <ModalShell onClose={onClose} T={T}>
+      <div style={{ fontFamily: "'Satisfy',cursive", fontSize: 28, color: "#C8102E", textAlign: "center", marginBottom: 4 }}>⌨️ Keyboard Shortcuts</div>
+      <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {[...rows, ...(isAdmin ? adminRows : [])].map(([key, desc]) => (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ minWidth: 74, textAlign: "center", padding: "4px 8px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 6, fontFamily: "monospace", fontSize: 12, color: "#C8102E", fontWeight: 700 }}>{key}</span>
+            <span style={{ fontFamily: "Georgia,serif", fontSize: 12.5, color: T.text }}>{desc}</span>
+          </div>
+        ))}
+      </div>
+      <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.08em", marginTop: 16 }}>SHORTCUTS ARE DISABLED WHILE TYPING IN A FIELD</p>
+    </ModalShell>
+  );
+}
+
 export default function App() {
   const [cz, setCz] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("cv_admin") === "1");
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Global "?" shortcut opens the keyboard-shortcuts help from anywhere in the
+  // app. Ignored while typing, and while the tutorial overlay is active.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== "?") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || document.activeElement?.isContentEditable) return;
+      if (showTutorial) return;
+      e.preventDefault();
+      setShowShortcuts(s => !s);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [showTutorial]);
 
   // Auto-launch the tour once, on a visitor's first-ever landing on the Collection
   // page. Delayed slightly so the page has a moment to render before we start
@@ -4397,6 +4716,10 @@ export default function App() {
               <span style={{ fontSize: 12 }}>❓</span>
               <span>{cz ? "JAK NA TO" : "HOW IT WORKS"}</span>
             </button>
+            <button onClick={() => { setMenuOpen(false); setTimeout(() => setShowShortcuts(true), 150); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", marginBottom: 6, marginLeft: 6, background: "transparent", border: "1px solid #FFD0C033", borderRadius: 999, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", opacity: 0.85 }}>
+              <span style={{ fontSize: 12 }}>⌨️</span>
+              <span>{cz ? "ZKRATKY" : "SHORTCUTS"}</span>
+            </button>
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 8, paddingTop: 4 }}>
               <OfflineSettings cz={cz} />
             </div>
@@ -4448,6 +4771,7 @@ export default function App() {
 
       {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
       {showTutorial && <TutorialOverlay steps={tutorialSteps} onClose={closeTutorial} T={T} />}
+      {showShortcuts && <ShortcutsHelpModal T={T} isAdmin={isAdmin} onClose={() => setShowShortcuts(false)} />}
       <OfflineBadge cz={cz} />
     </div>
   );
