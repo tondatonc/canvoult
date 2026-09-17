@@ -1797,3 +1797,24 @@ Three features added in one session:
 - removeItem(i) reindexes the per-index state maps (perTagInput, perTagSuggestions, perItemDates) so they stay aligned after an item is spliced out of the middle of the queue
 
 No schema changes, no new dependencies. All existing modals unaffected.
+
+
+## 2026-09-17 — Persist "not a duplicate" dismissals (v1.1.1)
+
+Follow-up to the duplicate scanner: dismissing a group as "not a duplicate" was
+session-only (React state), so it reappeared on next visit. Now persisted:
+
+- loadDismissedDupes() / saveDismissedDupes() — new localStorage helpers (key
+  "cv_dismissed_dupes"), same pattern as loadCustomColors/loadTagRoles
+- DuplicateScanModal reads the dismissed set on mount and writes to
+  localStorage immediately when a group is dismissed
+- CollectionPage's duplicateGroups (used for the toolbar badge count and the
+  orange warning banner) also filters out dismissed groups, kept in sync via
+  a small dismissedDupes state that re-reads localStorage when the scan modal
+  closes (closeDuplicatesModal), so the banner/badge match what's in the modal
+- Dismissal is keyed by the group's sorted can IDs — if a can in a dismissed
+  group is later deleted, that exact group naturally won't reappear anyway;
+  a *new* can with a similar name would form a new group and get flagged fresh
+
+Stored per-browser/device (localStorage), not in Supabase — consistent with
+how tag colors and tag roles are persisted client-side. No schema change.
