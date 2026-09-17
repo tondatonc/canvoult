@@ -289,6 +289,17 @@ function saveTagRoles(roles) {
   localStorage.setItem("cv_tag_roles", JSON.stringify(roles));
 }
 
+// Duplicate-group dismissals ("not a duplicate") — stored in localStorage as
+// an array of group keys (sorted can IDs joined with "|"), so a group stays
+// dismissed across sessions on this device until one of its cans is deleted
+// (which naturally drops the group from future scans anyway).
+function loadDismissedDupes() {
+  try { return JSON.parse(localStorage.getItem("cv_dismissed_dupes") || "[]"); } catch { return []; }
+}
+function saveDismissedDupes(keys) {
+  localStorage.setItem("cv_dismissed_dupes", JSON.stringify(keys));
+}
+
 // Date display format: dd/mm/yyyy everywhere a date is shown to the user.
 // (Native <input type="date"> pickers are unaffected — those follow browser/OS locale.)
 function fmtDate(ts) {
@@ -2464,12 +2475,21 @@ function findDuplicateGroups(cans, { similarityThreshold = 0.72 } = {}) {
 // ─── DUPLICATE SCAN MODAL ─────────────────────────────────────────────────────
 
 function DuplicateScanModal({ T, cans, onDeleteCan, onClose }) {
-  const [dismissed, setDismissed] = useState(new Set()); // group keys dismissed this session
+  const [dismissed, setDismissed] = useState(() => new Set(loadDismissedDupes())); // persisted "not a duplicate" groups
   const [deleting, setDeleting] = useState(null);
 
   const groups = useMemo(() => findDuplicateGroups(cans), [cans]);
   const groupKey = g => g.cans.map(c => c.id).join("|");
   const visibleGroups = groups.filter(g => !dismissed.has(groupKey(g)));
+
+  const dismissGroup = (key) => {
+    setDismissed(s => {
+      const next = new Set(s);
+      next.add(key);
+      saveDismissedDupes([...next]);
+      return next;
+    });
+  };
 
   const handleDelete = async (id) => {
     setDeleting(id);
@@ -2502,7 +2522,7 @@ function DuplicateScanModal({ T, cans, onDeleteCan, onClose }) {
                     <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#C8102E", letterSpacing: "0.1em" }}>
                       ⚠️ {g.reason.toUpperCase()}
                     </span>
-                    <button onClick={() => setDismissed(s => new Set(s).add(key))}
+                    <button onClick={() => dismissGroup(key)}
                       style={{ background: "none", border: "none", color: T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 9, cursor: "pointer", textDecoration: "underline", letterSpacing: "0.05em" }}>
                       NOT A DUPLICATE
                     </button>
@@ -2872,7 +2892,13 @@ function CollectionPage({ T, L, isAdmin }) {
   };
 
   // Duplicate detection — recomputed whenever the collection changes.
-  const duplicateGroups = useMemo(() => findDuplicateGroups(cans), [cans]);
+  const [dismissedDupes, setDismissedDupes] = useState(() => new Set(loadDismissedDupes()));
+  const duplicateGroups = useMemo(
+    () => findDuplicateGroups(cans).filter(g => !dismissedDupes.has(g.cans.map(c => c.id).join("|"))),
+    [cans, dismissedDupes]
+  );
+  // Re-sync the dismissed set when the scan modal closes, in case something was dismissed inside it.
+  const closeDuplicatesModal = () => { setDismissedDupes(new Set(loadDismissedDupes())); setModal(null); };
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────
   // Ignored while typing in any input/textarea/select or while a modal is
@@ -2994,7 +3020,7 @@ function CollectionPage({ T, L, isAdmin }) {
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTagsRaw} customColors={customColors} tagRoles={tagRoles} onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }} onClose={() => setModal(null)} />}
       {modal === "recomputeColors" && <RecomputeColorsModal T={T} cans={cans} onSaveCan={can => saveCan(can, { closeModal: false, refetch: false })} onClose={() => setModal(null)} />}
-      {modal === "duplicates" && <DuplicateScanModal T={T} cans={cans} onDeleteCan={removeCan} onClose={() => setModal(null)} />}
+      {modal === "duplicates" && <DuplicateScanModal T={T} cans={cans} onDeleteCan={removeCan} onClose={closeDuplicatesModal} />}
       {modal?.can && !modal.edit && (
         <DetailModal T={T} can={modal.can} isAdmin={isAdmin} customColors={customColors}
           onDelete={id => { removeCan(id); setModal(null); }}
