@@ -1818,3 +1818,20 @@ session-only (React state), so it reappeared on next visit. Now persisted:
 
 Stored per-browser/device (localStorage), not in Supabase — consistent with
 how tag colors and tag roles are persisted client-side. No schema change.
+
+
+## 2026-10-13 — Reupload broken images from the checker (v1.2.0)
+
+Broken Image Checker (inside MigrateBlobTool, Stats page admin section) only
+listed records with dead image URLs and told you to find and fix them by hand.
+Now each broken row has a "REUPLOAD" button:
+
+- Opens AddEditModal pre-filled with that can/wish (folder "collection" or
+  "wishlist", note field for wishes) so a new photo can be picked and cropped
+- On save, MigrateBlobTool.handleReuploaded persists via new onSaveCan /
+  onSaveWish props (db.upsertCan / db.upsertWish + local state update, same
+  wiring as BadCropAuditTool) and removes the record from the broken list
+- Files touched: src/App.jsx (MigrateBlobTool + its call site in Stats),
+  src/version.js
+
+No schema changes, no new dependencies.

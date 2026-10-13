@@ -3636,12 +3636,13 @@ function CanWallPage({ T, L, isAdmin }) {
 // Moves images that are at root of Blob (no folder) into collection/ folder
 // and updates Supabase with the new URL
 
-function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
+function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone, onSaveCan, onSaveWish, allTags = [] }) {
   const [state, setState] = useState("idle"); // idle | running | done
   const [log, setLog] = useState([]);
   const [count, setCount] = useState({ done: 0, fail: 0, total: 0 });
   const [brokenItems, setBrokenItems] = useState(null); // null = not scanned yet
   const [scanning, setScanning] = useState(false);
+  const [reuploadEntry, setReuploadEntry] = useState(null); // { item, type }
 
   const addLog = (msg) => setLog(p => [...p, msg]);
 
@@ -3673,6 +3674,14 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
     }));
     setBrokenItems(broken);
     setScanning(false);
+  };
+
+  // After a re-upload is saved, persist it and drop the record from the broken list
+  const handleReuploaded = async (updated) => {
+    if (reuploadEntry.type === "wish") await onSaveWish?.(updated);
+    else await onSaveCan?.(updated);
+    setBrokenItems(bs => (bs || []).filter(b => !(b.type === reuploadEntry.type && b.item.id === reuploadEntry.item.id)));
+    setReuploadEntry(null);
   };
 
   const run = async () => {
@@ -3742,6 +3751,17 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
 
   return (
     <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px" }}>
+      {reuploadEntry && (
+        <AddEditModal
+          T={T}
+          initial={reuploadEntry.item}
+          extraFields={reuploadEntry.type === "wish" ? ["note"] : []}
+          folder={reuploadEntry.type === "wish" ? "wishlist" : "collection"}
+          allTags={allTags}
+          onSave={handleReuploaded}
+          onClose={() => setReuploadEntry(null)}
+        />
+      )}
       <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 8 }}>
         🗂️ BLOB FOLDER MIGRATION
       </p>
@@ -3794,11 +3814,14 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone }) {
                             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                             <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#FF6B00", letterSpacing: "0.05em" }}>{status} · {item.image?.split("/").slice(-2).join("/")}</div>
                           </div>
+                          <button onClick={() => setReuploadEntry({ item, type })} style={{ flexShrink: 0, background: "#C8102E", border: "none", borderRadius: 7, padding: "6px 12px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer" }}>
+                            ⬆ REUPLOAD
+                          </button>
                         </div>
                       ))}
                     </div>
                     <p style={{ fontFamily: "Georgia,serif", fontSize: 11, color: T.textFaint, fontStyle: "italic" }}>
-                      Open each item and re-upload the photo to fix it.
+                      Tap REUPLOAD on a record to pick a new photo for it.
                     </p>
                   </div>
             )}
@@ -4012,6 +4035,14 @@ function StatsPage({ T, L, isAdmin }) {
 
         {/* Migration tool */}
         <MigrateBlobTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos}
+          onSaveCan={async (can) => {
+            if (db.isConfigured()) await db.upsertCan(can).catch(console.error);
+            setCans(p => p.map(c => c.id === can.id ? can : c));
+          }}
+          onSaveWish={async (w) => {
+            if (db.isConfigured()) await db.upsertWish(w).catch(console.error);
+            setWishes(p => p.map(x => x.id === w.id ? w : x));
+          }}
           onDone={({ cans: uc, wishes: uw }) => {
             if (uc) setCans(p => p.map(c => uc[c.id] ? { ...c, image: uc[c.id] } : c));
             if (uw) setWishes(p => p.map(w => uw[w.id] ? { ...w, image: uw[w.id] } : w));
