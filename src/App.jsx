@@ -603,7 +603,7 @@ async function compressWallPhoto(file) {
 
 // ─── CROP MODAL ──────────────────────────────────────────────────────────────
 
-function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }) {
+function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null, autoDetect = true }) {
   const imgRef = useRef();
   const [dragging, setDragging] = useState(false);
   const [box, setBox] = useState({ x: 0, y: 0, w: 1, h: 1 });
@@ -846,13 +846,14 @@ function CropModal({ src, onCrop, onCancel, T, quality = 0.97, targetKB = null }
         </div>
 
         {/* Crop area */}
-        <div className="crop-area" style={{ position: "relative", width: "100%", touchAction: "none", userSelect: "none", borderRadius: 8, overflow: "hidden", maxHeight: "55vh" }}
+        <div className="crop-area" style={{ position: "relative", width: "fit-content", maxWidth: "100%", margin: "0 auto", touchAction: "none", userSelect: "none", borderRadius: 8, overflow: "hidden", maxHeight: "55vh" }}
           onMouseMove={onMoveWithRatio} onMouseUp={onUp} onMouseLeave={onUp}
           onTouchMove={onMoveWithRatio} onTouchEnd={onUp}>
-          <img ref={imgRef} src={src} alt="crop" style={{ width: "100%", height: "100%", maxHeight: "55vh", objectFit: "contain", display: "block", background: "transparent" }}
+          <img ref={imgRef} src={src} alt="crop" style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: "55vh", display: "block", background: "transparent" }}
             onLoad={() => {
               const img = imgRef.current;
               if (!img) return;
+              if (!autoDetect) { setBox({ x: 0, y: 0, w: 1, h: 1 }); return; }
               // Try to auto-detect content bounds for transparent PNGs
               try {
                 const offscreen = document.createElement('canvas');
@@ -4335,7 +4336,7 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
   return (
     <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginTop: 12 }}>
       {cropSrc && !savingCrop && (
-        <CropModal src={cropSrc} T={T} quality={0.85} targetKB={150} onCrop={handleCropDone} onCancel={closeCrop} />
+        <CropModal src={cropSrc} T={T} quality={0.85} targetKB={150} autoDetect={false} onCrop={handleCropDone} onCancel={closeCrop} />
       )}
       {editEntry && (savingCrop || cropErr) && (
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", color: cropErr ? "#FF4444" : T.textMuted, marginBottom: 8 }}>

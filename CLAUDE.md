@@ -1849,3 +1849,20 @@ device to re-crop. Now tapping a flagged photo crops the EXISTING image:
   deletes the old blob (deleteOldBlobIfReplaced), and drops the item from the list
 - Errors (load/upload failure) shown inline above the list with a dismiss link
 - AddEditModal is no longer used by BadCropAuditTool; file touched: src/App.jsx
+
+
+## 2026-10-14 — Fix crop editor mapping + autodetect (v1.2.2)
+
+Two bugs made re-crops come out different from what the editor showed:
+
+- CropModal's <img> was width:100% + object-fit:contain, so tall/narrow photos
+  were letterboxed. The crop box is stored as fractions of the *element* but
+  doCrop applies them to the *natural* image size, so a box drawn tightly around
+  the can cropped the wrong (too narrow, off-center) strip. The .crop-area
+  wrapper now shrinks to the image (width:fit-content, img width/height:auto,
+  max 100% / 55vh), so element fractions == image fractions.
+- CropModal onLoad auto-sets the box to the opaque bounds of transparent images.
+  Added prop autoDetect (default true, unchanged for normal uploads); Bad Crop
+  Audit passes autoDetect={false} so it starts with the full image selected.
+
+Only src/App.jsx (CropModal + BadCropAuditTool) and src/version.js touched.
