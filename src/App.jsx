@@ -4245,6 +4245,9 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
   const [results, setResults] = useState([]); // [{ item, kind, ratio, bbox }]
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [editEntry, setEditEntry] = useState(null); // { item, kind, ratio } currently being cropped/edited
+  const [cropSrc, setCropSrc] = useState(null);
+  const [cropErr, setCropErr] = useState("");
+  const [savingCrop, setSavingCrop] = useState(false);
 
   const targets = [
     ...cans.filter(c => c.image).map(c => ({ item: c, kind: "can" })),
@@ -4279,23 +4282,66 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
     if (editEntry.kind === "wish") await onSaveWish(updated);
     else await onSaveCan(updated);
     setResults(rs => rs.filter(r => !(r.kind === editEntry.kind && r.item.id === editEntry.item.id)));
-    setEditEntry(null);
+    closeCrop();
+  };
+
+  // Crop the EXISTING photo directly — no file picker. We fetch it as a blob so
+  // the canvas isn't CORS-tainted, hand it to CropModal, then upload the result.
+  const openCrop = async (entry) => {
+    setEditEntry(entry);
+    setCropErr("");
+    try {
+      const res = await fetch(entry.item.image, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCropSrc(URL.createObjectURL(await res.blob()));
+    } catch (err) {
+      setCropErr(`Couldn't load photo (${err.message})`);
+    }
+  };
+  const closeCrop = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null); setEditEntry(null); setSavingCrop(false);
+  };
+  const handleCropDone = async (croppedFile) => {
+    const { item, kind } = editEntry;
+    setSavingCrop(true); setCropErr("");
+    try {
+      const compressed = await compressCanPhoto(croppedFile);
+      const avgColor = await computeAvgColor(compressed).catch(() => item.avgColor);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "image/jpeg",
+          "x-filename": `${kind === "wish" ? "wishlist" : "collection"}/${Date.now()}.jpg`,
+          "x-canvault-auth": atob(_PH),
+        },
+        body: compressed,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`${res.status}: ${err.error || "unknown"}`);
+      }
+      const { url } = await res.json();
+      await handleSaved({ ...item, image: url, avgColor });
+      deleteOldBlobIfReplaced(item.image, url);
+    } catch (err) {
+      setCropErr(`Save failed — ${err.message}`);
+      setSavingCrop(false);
+    }
   };
 
   const flagged = results.filter(r => r.ratio * 100 >= threshold);
 
   return (
     <div style={{ width: "100%", background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "16px 20px", marginTop: 12 }}>
-      {editEntry && (
-        <AddEditModal
-          T={T}
-          initial={editEntry.item}
-          extraFields={editEntry.kind === "wish" ? ["note"] : []}
-          folder={editEntry.kind === "wish" ? "wishlist" : "collection"}
-          allTags={allTags}
-          onSave={handleSaved}
-          onClose={() => setEditEntry(null)}
-        />
+      {cropSrc && !savingCrop && (
+        <CropModal src={cropSrc} T={T} quality={0.85} targetKB={150} onCrop={handleCropDone} onCancel={closeCrop} />
+      )}
+      {editEntry && (savingCrop || cropErr) && (
+        <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.1em", color: cropErr ? "#FF4444" : T.textMuted, marginBottom: 8 }}>
+          {cropErr || "⏳ Saving cropped photo…"}
+          {cropErr && <button onClick={closeCrop} style={{ marginLeft: 8, background: "none", border: "none", color: T.textMuted, cursor: "pointer", textDecoration: "underline", fontSize: 10 }}>dismiss</button>}
+        </p>
       )}
 
       <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", marginBottom: 8 }}>
@@ -4305,7 +4351,7 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
       {state === "idle" && (
         <>
           <p style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, marginBottom: 10 }}>
-            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop. Tap a flagged photo to re-crop and re-upload it.
+            Scans every photo for how much of the frame is near-white background — a high percentage usually means it needs a tighter crop. Tap a flagged photo to crop it right there — no re-upload needed.
           </p>
           <button onClick={scan} style={{ background: "#C8102E", border: "none", borderRadius: 10, padding: "10px 22px", color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.12em", cursor: "pointer" }}>
             🔍 SCAN PHOTOS
@@ -4353,7 +4399,7 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
               </p>
               <div style={{ maxHeight: "50vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
                 {flagged.map(({ item, kind, ratio }) => (
-                  <div key={`${kind}-${item.id}`} onClick={() => setEditEntry({ item, kind, ratio })}
+                  <div key={`${kind}-${item.id}`} onClick={() => openCrop({ item, kind, ratio })}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 8, cursor: "pointer" }}>
                     <div style={{
                       position: "relative", width: 64, height: 96, flexShrink: 0, borderRadius: 4, overflow: "hidden",

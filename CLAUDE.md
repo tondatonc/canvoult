@@ -1835,3 +1835,17 @@ Now each broken row has a "REUPLOAD" button:
   src/version.js
 
 No schema changes, no new dependencies.
+
+
+## 2026-10-14 — Crop badly-cropped photos in place (v1.2.1)
+
+Bad Crop Audit used to open AddEditModal, which forced picking a file from the
+device to re-crop. Now tapping a flagged photo crops the EXISTING image:
+
+- BadCropAuditTool.openCrop fetches the current image as a blob (avoids canvas
+  CORS tainting) and opens CropModal directly on it
+- handleCropDone compresses (compressCanPhoto), recomputes avgColor, uploads to
+  /api/upload (collection/ or wishlist/ folder), saves via onSaveCan/onSaveWish,
+  deletes the old blob (deleteOldBlobIfReplaced), and drops the item from the list
+- Errors (load/upload failure) shown inline above the list with a dismiss link
+- AddEditModal is no longer used by BadCropAuditTool; file touched: src/App.jsx
