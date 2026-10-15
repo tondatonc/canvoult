@@ -969,7 +969,7 @@ function CanSvg({ color, name }) {
 
 // ─── SHARED UI ───────────────────────────────────────────────────────────────
 
-function ModalShell({ onClose, children, T, preventBackdropClose = false, confirmClose = null }) {
+function ModalShell({ onClose, children, T, preventBackdropClose = false, confirmClose = null, maxWidth = "min(780px, 95vw)", padding = "36px 28px" }) {
   const handleClose = () => {
     if (confirmClose && !window.confirm(confirmClose)) return;
     onClose();
@@ -986,7 +986,7 @@ function ModalShell({ onClose, children, T, preventBackdropClose = false, confir
       <div onClick={e => e.stopPropagation()} style={{
         background: "#ffffff",
         border: `3px solid ${T.border}`, borderRadius: 20,
-        padding: "36px 28px", width: "100%", maxWidth: "min(780px, 95vw)",
+        padding, width: "100%", maxWidth,
         maxHeight: "90vh", overflowY: "auto", position: "relative",
         boxShadow: "0 24px 64px #00000077",
         animation: "popIn 0.28s cubic-bezier(.34,1.56,.64,1)",
@@ -1558,6 +1558,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
 function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, customColors = {}, onCountryExpanded, onPrev, onNext }) {
   const color = getCanColor(can.tags, customColors);
   const [copied, setCopied] = useState(false);
+  const isMobile = useIsMobile(760);
 
   // Auto-expand any 3-letter country codes in the array on open
   useEffect(() => {
@@ -1596,56 +1597,74 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
     }
   };
 
-  return (
-    <ModalShell onClose={onClose} T={T}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
-          {(onPrev || onNext) && (
-            <button onClick={onPrev} title="Previous can (←)" style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "50%", width: 30, height: 30, color: T.textMuted, cursor: "pointer", fontSize: 15, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-          )}
-          <div style={{ width: "min(220px, 55vw)", filter: "drop-shadow(0 8px 18px #00000022)" }}>
-            {can.image
-              ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "auto", maxHeight: "45vh", objectFit: "contain", borderRadius: 10 }} />
-              : <div style={{ width: "100%", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
-          </div>
-          {(onPrev || onNext) && (
-            <button onClick={onNext} title="Next can (→)" style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "50%", width: 30, height: 30, color: T.textMuted, cursor: "pointer", fontSize: 15, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
-          )}
-        </div>
-        <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 26, padding: "6px 22px", borderRadius: "999px", marginBottom: 8, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
-        <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 9, letterSpacing: "0.15em", marginBottom: 8 }}>
-          {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${fmtDate(can.addedAt)}`}
-        </p>
-        {resolvedCountries.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 8 }}>
-            {resolvedCountries.map((rc, i) => (
-              <span key={i} style={{ display: "inline-flex", alignItems: "center", fontFamily: "Georgia,serif", fontSize: 12, color: T.textMuted }}>
-                <FlagImg iso2={rc.iso2} name={rc.name} />{rc.name}
-              </span>
-            ))}
-          </div>
-        )}
-        {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 12, fontStyle: "italic", marginBottom: 12, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", marginBottom: 18 }}>
-          {can.tags.map(t => <TagPill key={t} tag={t} T={T} />)}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <div style={{ flex: 1, height: 1, background: T.border }} /><span style={{ color: "#C8102E" }}>★</span><div style={{ flex: 1, height: 1, background: T.border }} />
-        </div>
+  const hasNav = !!(onPrev || onNext);
+  const navBtn = (onClick, title, label, extra = {}) => (
+    <button onClick={onClick} title={title} style={{ background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: "50%", width: 34, height: 34, color: T.textMuted, cursor: "pointer", fontSize: 17, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", ...extra }}>{label}</button>
+  );
+  const btnBase = { background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" };
+  const al = isMobile ? "center" : "left";
+  const jc = isMobile ? "center" : "flex-start";
 
-        {/* Share — always visible */}
-        <button onClick={handleShare} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 20px", color: copied ? "#22C55E" : T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer", marginBottom: isAdmin ? 10 : 0, transition: "color 0.2s" }}>
+  const imageBlock = (
+    <div style={{ flex: isMobile ? "none" : "1 1 54%", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, position: "relative" }}>
+      {hasNav && navBtn(onPrev, "Previous can (←)", "‹")}
+      <div style={{ flex: isMobile ? "none" : 1, minWidth: 0, display: "flex", justifyContent: "center", filter: "drop-shadow(0 10px 22px #00000028)" }}>
+        {can.image
+          ? <img src={can.image} alt={can.name} style={isMobile
+              ? { width: "auto", maxWidth: "min(300px, 62vw)", height: "auto", maxHeight: "48vh", objectFit: "contain", borderRadius: 10 }
+              : { width: "auto", maxWidth: "100%", height: "min(74vh, 800px)", objectFit: "contain", borderRadius: 12 }} />
+          : <div style={{ width: isMobile ? "min(220px, 55vw)" : "min(340px, 100%)", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
+      </div>
+      {hasNav && navBtn(onNext, "Next can (→)", "›")}
+    </div>
+  );
+
+  const infoBlock = (
+    <div style={{ flex: isMobile ? "none" : "1 1 46%", minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: al, paddingTop: isMobile ? 0 : 24 }}>
+      <div style={{ alignSelf: isMobile ? "center" : "flex-start", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: isMobile ? 26 : 30, lineHeight: 1.15, padding: "6px 22px", borderRadius: isMobile ? 999 : 26, marginBottom: 10, boxShadow: "0 4px 14px #C8102E55" }}>{can.name}</div>
+      <p style={{ fontFamily: "'Oswald',sans-serif", color: T.textFaint, fontSize: 10, letterSpacing: "0.15em", marginBottom: 12 }}>
+        {can.dateUnknown ? "📅 DATE UNKNOWN" : `ADDED ${fmtDate(can.addedAt)}`}
+      </p>
+      {resolvedCountries.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: jc, marginBottom: 12 }}>
+          {resolvedCountries.map((rc, i) => (
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", fontFamily: "Georgia,serif", fontSize: 13, color: T.textMuted }}>
+              <FlagImg iso2={rc.iso2} name={rc.name} />{rc.name}
+            </span>
+          ))}
+        </div>
+      )}
+      {can.note && <p style={{ fontFamily: "Georgia,serif", color: T.textMuted, fontSize: 13, fontStyle: "italic", marginBottom: 14, padding: "8px 16px", background: T.bgInput, borderRadius: 8, border: `1px solid ${T.border}` }}>"{can.note}"</p>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: jc, marginBottom: 18 }}>
+        {can.tags.map(t => <TagPill key={t} tag={t} T={T} />)}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <div style={{ flex: 1, height: 1, background: T.border }} /><span style={{ color: "#C8102E" }}>★</span><div style={{ flex: 1, height: 1, background: T.border }} />
+      </div>
+
+      {/* Share — always visible */}
+      <div style={{ display: "flex", justifyContent: jc, marginBottom: isAdmin ? 10 : 0 }}>
+        <button onClick={handleShare} style={{ ...btnBase, padding: "9px 20px", color: copied ? "#22C55E" : T.textMuted, transition: "color 0.2s" }}>
           {copied ? "✅ LINK COPIED!" : "🔗 SHARE CAN"}
         </button>
+      </div>
 
-        {isAdmin && (
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-            <button onClick={onEdit} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>EDIT</button>
-            <button onClick={() => onDuplicate(can)} style={{ background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, padding: "9px 16px", color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>📋 COPY</button>
-            <button onClick={() => { onDelete(can.id); onClose(); }} style={{ background: "transparent", border: "2px solid #C8102E66", borderRadius: 9, padding: "9px 16px", color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer" }}>REMOVE</button>
-          </div>
-        )}
-        {isAdmin && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.08em", marginTop: 10 }}>← → BROWSE · E EDIT · DELETE REMOVE</p>}
+      {isAdmin && (
+        <div style={{ display: "flex", gap: 8, justifyContent: jc, flexWrap: "wrap" }}>
+          <button onClick={onEdit} style={btnBase}>EDIT</button>
+          <button onClick={() => onDuplicate(can)} style={btnBase}>📋 COPY</button>
+          <button onClick={() => { onDelete(can.id); onClose(); }} style={{ ...btnBase, background: "transparent", border: "2px solid #C8102E66", color: "#C8102E" }}>REMOVE</button>
+        </div>
+      )}
+      {isAdmin && <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.08em", marginTop: 10 }}>← → BROWSE · E EDIT · DELETE REMOVE</p>}
+    </div>
+  );
+
+  return (
+    <ModalShell onClose={onClose} T={T} maxWidth={isMobile ? "min(780px, 95vw)" : "min(1180px, 96vw)"} padding={isMobile ? "36px 20px 28px" : "28px 32px"}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 16 : 36 }}>
+        {imageBlock}
+        {infoBlock}
       </div>
     </ModalShell>
   );
