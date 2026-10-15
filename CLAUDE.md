@@ -1894,3 +1894,12 @@ Collage was a fixed-column grid; now it is organised in ROWS (photo-wall style).
 - rowH prop: 160px desktop, 100px mobile. A trailing `flexGrow:9999` spacer stops the
   last row stretching. Removed collage case from gridColumnsFor
 - Files touched: src/App.jsx, src/version.js
+
+## 2026-10-15 — Color sort starts at red (v1.3.2)
+
+Sort-by-color put crimson/pink-red cans (hue ~330-360°) at the very END of the
+spectrum because hue 0° was the start. Now the hue wheel is rotated by +30° in
+`colorSortKey` (`(h + 30) % 360`), so the spectrum begins at crimson/pink-red,
+then red → orange → yellow → green → blue → purple, grayscale last.
+
+- Files touched: src/App.jsx, src/version.js
