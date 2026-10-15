@@ -1881,3 +1881,16 @@ borders, labels or gaps.
   with raised z-index, name on title tooltip, admin pin button kept). Used by both
   Collection and Wishlist (isWish dims/greys items like WishGridCard)
 - Files touched: src/App.jsx, src/version.js
+
+
+## 2026-10-15 — Collage view as justified rows (v1.3.1)
+
+Collage was a fixed-column grid; now it is organised in ROWS (photo-wall style).
+
+- Collage container is `display:flex; flex-wrap:wrap; gap:0` instead of CSS grid columns
+- CollageCard sizes itself by the image's natural aspect ratio (flex-grow = ratio*100,
+  flex-basis = ratio*rowH; ratios cached in module-level `_collageAspect`, default 0.6
+  until the image loads) so every row has equal height and fills the full width
+- rowH prop: 160px desktop, 100px mobile. A trailing `flexGrow:9999` spacer stops the
+  last row stretching. Removed collage case from gridColumnsFor
+- Files touched: src/App.jsx, src/version.js
