@@ -1866,3 +1866,18 @@ Two bugs made re-crops come out different from what the editor showed:
   Audit passes autoDetect={false} so it starts with the full image selected.
 
 Only src/App.jsx (CropModal + BadCropAuditTool) and src/version.js touched.
+
+
+## 2026-10-15 — Collage view (v1.3.0)
+
+New "collage" view mode: cans tiled edge-to-edge like a collage, no cards,
+borders, labels or gaps.
+
+- viewMode "collage" added (NOT part of GRID_MODES, so Ctrl+scroll zoom skips it);
+  toggle button ▩ in SortBar, keyboard shortcut "5", persisted in ?view=collage
+- gridColumnsFor: 4 cols on mobile, repeat(auto-fill, minmax(96px, 1fr)) on desktop;
+  grid gap is 0 in collage mode
+- New CollageCard component (3:4 cell, image object-fit: contain, hover scales 1.18
+  with raised z-index, name on title tooltip, admin pin button kept). Used by both
+  Collection and Wishlist (isWish dims/greys items like WishGridCard)
+- Files touched: src/App.jsx, src/version.js
