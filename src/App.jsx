@@ -1332,7 +1332,9 @@ function colorSortKey(hex) {
   if (!hsl) return null;
   const [h, s, l] = hsl;
   if (s < 12) return [1, 0, l]; // grayscale bucket, after all hued colors
-  return [0, h, l];
+  // Rotate the hue wheel so the spectrum starts at crimson/pink-red (~330°)
+  // instead of exactly 0° — otherwise reds with hue 330-360 land at the very end.
+  return [0, (h + 30) % 360, l];
 }
 function sortCans(cans, sort, tagRoles = {}) {
   return [...cans].sort((a, b) => {
