@@ -1921,3 +1921,11 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
   while to update the installed icon on its own).
 - Files touched: public/icon-*.png, public/apple-touch-icon.png, public/manifest.json,
   index.html, public/sw.js, src/version.js
+
+## 2026-10-15 — v1.3.4: Instagram-style detail view
+
+**What:** `DetailModal` now uses a two-column layout on desktop (viewport > 760px): large can image on the left (up to ~74vh tall) with prev/next arrows beside it, all info on the right (name pill, date, countries, note, tags, share / edit / copy / remove), left-aligned. Mobile keeps the stacked layout with a slightly larger image.
+
+**Why:** can image was too small in the detail view (220px wide cap, 45vh).
+
+**Files touched:** `src/App.jsx` (`ModalShell` gained optional `maxWidth` and `padding` props, defaults unchanged; `DetailModal` rewritten using `useIsMobile(760)`), `src/version.js`.
