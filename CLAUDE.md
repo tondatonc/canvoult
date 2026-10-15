@@ -1903,3 +1903,21 @@ spectrum because hue 0° was the start. Now the hue wheel is rotated by +30° in
 then red → orange → yellow → green → blue → purple, grayscale last.
 
 - Files touched: src/App.jsx, src/version.js
+
+## 2026-10-15 — App icon fix (v1.3.3)
+
+Installed PWA icon looked broken on Android (dark square inset in a white frame, tiny can,
+solid-white highlight). Causes: launcher treated the icons as non-adaptive and framed them; the
+`any` icons were transparent; the can was far too small; and cairosvg ignored the 8-digit hex
+alpha (`#ffffff22`) so the highlight rendered solid white.
+
+- Regenerated all icons from the can.svg shapes via cairosvg, with highlight as
+  `fill="#fff" fill-opacity="0.22"`. Opaque `#1a0a0a` background on every icon.
+- Maskable: can scaled to 0.8 so it sits inside the 80% safe zone. `any`: scaled 0.95.
+- Added `icon-192-maskable.png` and `apple-touch-icon.png` (180px); manifest lists 192/512 any +
+  192/512 maskable with `?v=3` cache-bust; `background_color` now `#1a0a0a`.
+- `sw.js` SHELL_CACHE bumped v5 -> v6 so old precached icons are dropped.
+- To refresh on a phone: uninstall the old home-screen app and reinstall (Android may take a
+  while to update the installed icon on its own).
+- Files touched: public/icon-*.png, public/apple-touch-icon.png, public/manifest.json,
+  index.html, public/sw.js, src/version.js
