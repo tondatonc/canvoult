@@ -1201,6 +1201,7 @@ function useIsMobile(breakpoint = 640) {
 //   stays a fixed 2 columns everywhere since it's meant to feel like a
 //   deliberate close-up "zoomed in" view.
 function gridColumnsFor(viewMode, isMobile) {
+  if (viewMode === "collage") return isMobile ? "repeat(4, 1fr)" : "repeat(auto-fill, minmax(96px, 1fr))";
   if (viewMode === "grid2") return "repeat(2, 1fr)";
   if (isMobile) {
     if (viewMode === "grid4") return "repeat(4, 1fr)";
@@ -1249,7 +1250,7 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
     cursor: "pointer", transition: "all 0.15s",
   });
 
-  const iconFor = (v) => v === "grid4" ? "▦" : v === "grid3" ? "⊞" : v === "grid2" ? "▣" : "▤";
+  const iconFor = (v) => v === "collage" ? "▩" : v === "grid4" ? "▦" : v === "grid3" ? "⊞" : v === "grid2" ? "▣" : "▤";
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
@@ -1269,6 +1270,8 @@ function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
             {iconFor(v)}
           </button>
         ))}
+        {/* Collage: cans tiled edge-to-edge, no cards or gaps */}
+        <button onClick={() => setViewMode("collage")} style={btnStyle(viewMode === "collage")} title="Collage">{iconFor("collage")}</button>
         {/* Zoom in (bigger cards, fewer per row) */}
         <button
           onClick={() => canZoomOut && setViewMode(GRID_MODES[curIdx + 1])}
@@ -2917,6 +2920,7 @@ function CollectionPage({ T, L, isAdmin }) {
       if (e.key === "2") { setViewMode("grid2"); return; }
       if (e.key === "3") { setViewMode("grid3"); return; }
       if (e.key === "4") { setViewMode("grid4"); return; }
+      if (e.key === "5") { setViewMode("collage"); return; }
       if (!isAdmin) return;
       if (e.key === "n" || e.key === "N") { setModal("add"); return; }
       if (e.key === "b" || e.key === "B") { setModal("bulk"); return; }
@@ -3009,8 +3013,10 @@ function CollectionPage({ T, L, isAdmin }) {
           {allFiltered.map((can, i) => <TileCard key={can.id} can={can} i={i} tut={i === 0} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
-          {allFiltered.map((can, i) => <GridCard key={can.id} can={can} i={i} tut={i === 0} T={T} customColors={customColors} hideLabel={viewMode === "grid4"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "collage" ? 0 : viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
+          {allFiltered.map((can, i) => viewMode === "collage"
+            ? <CollageCard key={can.id} item={can} i={i} T={T} customColors={customColors} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />
+            : <GridCard key={can.id} can={can} i={i} tut={i === 0} T={T} customColors={customColors} hideLabel={viewMode === "grid4"} onClick={() => setModal({ can })} pinned={pinned.includes(can.id)} onPin={isAdmin ? () => togglePin(can.id) : null} />)}
         </div>
       )}
       </div>
@@ -3075,6 +3081,27 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLa
           <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: "0.03em", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{can.name}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Collage view: cans tiled edge-to-edge with no cards, borders or gaps.
+// Works for both collection cans and wishlist items (isWish).
+function CollageCard({ item, i, T, onClick, pinned, onPin, customColors = {}, isWish = false }) {
+  const color = getCanColor(item.tags, customColors);
+  return (
+    <div onClick={onClick} title={item.name}
+      style={{ position: "relative", aspectRatio: "3/4", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", animation: `popIn 0.3s ease ${Math.min(i, 40) * 0.015}s both`, transition: "transform 0.15s", zIndex: 0 }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.18)"; e.currentTarget.style.zIndex = 5; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.zIndex = 0; }}>
+      {onPin && (
+        <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 3, left: 3, background: pinned ? "#C8102E" : "#00000044", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 9, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+          {pinned ? "📌" : "📍"}
+        </button>
+      )}
+      <div style={{ width: "100%", height: "100%", opacity: isWish ? 0.75 : 1, filter: isWish ? "grayscale(30%)" : "none" }}>
+        {item.image ? <img src={item.image} alt={item.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /> : <CanSvg color={color} name={item.name} />}
+      </div>
     </div>
   );
 }
@@ -3272,8 +3299,10 @@ function WishlistPage({ T, L, isAdmin }) {
           {sorted.map((w, i) => <WishTileCard key={w.id} wish={w} i={i} T={T} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
-          {sorted.map((w, i) => <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid4"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
+        <div style={{ display: "grid", gridTemplateColumns: gridColumnsFor(viewMode, isMobile), gap: viewMode === "collage" ? 0 : viewMode === "grid4" ? 2 : viewMode === "grid3" ? 3 : 4 }}>
+          {sorted.map((w, i) => viewMode === "collage"
+            ? <CollageCard key={w.id} item={w} i={i} T={T} isWish onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />
+            : <WishGridCard key={w.id} wish={w} i={i} T={T} hideLabel={viewMode === "grid4"} onClick={() => setModal({ wish: w })} pinned={pinnedWishes.includes(w.id)} onPin={isAdmin ? () => togglePinWish(w.id) : null} />)}
         </div>
       )}
       </div>
