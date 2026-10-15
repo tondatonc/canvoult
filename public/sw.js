@@ -9,7 +9,7 @@
 //     cache fallback, so the app itself opens offline after first visit,
 //     but still picks up new deploys whenever a connection is available.
 
-const SHELL_CACHE = "canvault-shell-v5";
+const SHELL_CACHE = "canvault-shell-v6";
 const IMAGE_CACHE = "canvault-images-v2";
 const DEBUG_CACHE = "canvault-debug-log";
 
