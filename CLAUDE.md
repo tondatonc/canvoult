@@ -1929,3 +1929,11 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
 **Why:** can image was too small in the detail view (220px wide cap, 45vh).
 
 **Files touched:** `src/App.jsx` (`ModalShell` gained optional `maxWidth` and `padding` props, defaults unchanged; `DetailModal` rewritten using `useIsMobile(760)`), `src/version.js`.
+
+## 2026-10-16 — v1.3.5: delete individual cans in bulk upload
+
+**What:** In the Bulk Upload modal the 🗑 button now also appears on cans that were already uploaded: it deletes that can from the collection (DB row + blob image, via the app's `removeCan`) after a confirm, and drops it from the list. Not-yet-uploaded photos keep the old "remove from queue" behaviour. The button is hidden while an upload is running, so list indexes can't shift under `uploadAll`.
+
+**Why:** a mistaken photo could only be removed before upload; after upload it needed a trip to the collection to delete it.
+
+**Files touched:** `src/App.jsx` (`BulkUploadModal` gets `onDelete` prop, items store `canId`; wired to `removeCan` where the modal is rendered), `src/version.js`.

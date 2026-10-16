@@ -1706,7 +1706,7 @@ async function deleteFromBlob(url) {
 
 // ─── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
 
-function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = [] }) {
+function BulkUploadModal({ T, onSave, onDelete, onClose, folder = "collection", allTags = [] }) {
   const [queue, setQueue] = useState([]);
   const [tagInput, setTagInput] = useState("");
   const [tagSuggestions, setTagSuggestions] = useState([]);
@@ -1839,11 +1839,12 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
         });
         if (!res.ok) throw new Error(`${res.status}`);
         const { url } = await res.json();
-        updateItem(i, { uploading: false, done: true, url });
+        const canId = `${Date.now()}-${i}`;
         const pd = perItemDates[i] || {};
         const iDate = pd.date !== undefined ? pd.date : item.date;
         const iUnknown = pd.dateUnknown !== undefined ? pd.dateUnknown : item.dateUnknown;
-        await onSave({ id: `${Date.now()}-${i}`, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, avgColor, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
+        await onSave({ id: canId, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, avgColor, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
+        updateItem(i, { uploading: false, done: true, url, canId });
       } catch (err) {
         updateItem(i, { uploading: false, err: err.message });
       }
@@ -2068,10 +2069,17 @@ function BulkUploadModal({ T, onSave, onClose, folder = "collection", allTags = 
                       {item.uploading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span>
                         : item.done ? "✅" : item.err ? "❌" : "⏸️"}
                     </span>
-                    {!item.done && !item.uploading && (
+                    {!item.uploading && !anyUploading && (
                       <button
-                        onClick={() => { if (window.confirm(`Remove "${item.name || "this photo"}" from the upload queue?`)) removeItem(i); }}
-                        title="Remove from queue"
+                        onClick={async () => {
+                          if (item.done) {
+                            if (!onDelete || !item.canId) return;
+                            if (!window.confirm(`Delete "${item.name || "this can"}" from your collection?`)) return;
+                            await onDelete(item.canId);
+                          } else if (!window.confirm(`Remove "${item.name || "this photo"}" from the upload queue?`)) return;
+                          removeItem(i);
+                        }}
+                        title={item.done ? "Delete this can from the collection" : "Remove from queue"}
                         style={{ background: "transparent", border: `1.5px solid #C8102E66`, borderRadius: 6, padding: "2px 6px", color: "#C8102E", fontSize: 11, cursor: "pointer", lineHeight: 1.4 }}
                       >🗑</button>
                     )}
@@ -3044,7 +3052,7 @@ function CollectionPage({ T, L, isAdmin }) {
 
       {/* Modals */}
       {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTagsRaw} />}
-      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTagsRaw} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
+      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTagsRaw} onDelete={removeCan} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTagsRaw} customColors={customColors} tagRoles={tagRoles} onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }} onClose={() => setModal(null)} />}
       {modal === "recomputeColors" && <RecomputeColorsModal T={T} cans={cans} onSaveCan={can => saveCan(can, { closeModal: false, refetch: false })} onClose={() => setModal(null)} />}
