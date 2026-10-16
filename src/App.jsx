@@ -1369,7 +1369,7 @@ function sortCans(cans, sort, tagRoles = {}) {
 
 // ─── ADD / EDIT MODAL ────────────────────────────────────────────────────────
 
-function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], folder = "collection", allTags = [] }) {
+function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], folder = "collection", allTags = [], existingCans = [] }) {
   const [name, setName] = useState(initial.name || "");
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState(initial.tags || []);
@@ -1390,6 +1390,11 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
     return new Date(ts).toISOString().slice(0, 10);
   });
   const fileRef = useRef();
+  // Warn (never block) when adding something that looks like an existing can.
+  const similarCans = useMemo(
+    () => initial.id ? [] : findSimilarCans({ name, tags, countries }, existingCans),
+    [name, tags, countries, existingCans, initial.id]
+  );
 
   const getTagSuggestions = (q) => {
     if (!q.trim()) return setTagSuggestions([]);
@@ -1491,7 +1496,8 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
 
       <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>CAN NAME</label>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Fanta Orange 330ml"
-        style={{ width: "100%", padding: "10px 13px", marginBottom: 12, background: T.bgInput, border: `2px solid ${T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
+        style={{ width: "100%", padding: "10px 13px", marginBottom: similarCans.length ? 8 : 12, background: T.bgInput, border: `2px solid ${similarCans.length ? "#FF6B00" : T.border}`, borderRadius: 9, color: T.text, fontFamily: "Georgia,serif", fontSize: 13 }} />
+      <DuplicateWarning matches={similarCans} T={T} where={folder === "wishlist" ? "WISHLIST" : "COLLECTION"} />
 
       {extraFields.includes("note") && <>
         <label style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.15em", display: "block", marginBottom: 4 }}>NOTE</label>
@@ -1706,7 +1712,7 @@ async function deleteFromBlob(url) {
 
 // ─── BULK UPLOAD MODAL ────────────────────────────────────────────────────────
 
-function BulkUploadModal({ T, onSave, onDelete, onClose, folder = "collection", allTags = [] }) {
+function BulkUploadModal({ T, onSave, onDelete, onClose, folder = "collection", allTags = [], existingCans = [] }) {
   const [queue, setQueue] = useState([]);
   const [tagInput, setTagInput] = useState("");
   const [tagSuggestions, setTagSuggestions] = useState([]);
@@ -1987,6 +1993,12 @@ function BulkUploadModal({ T, onSave, onDelete, onClose, folder = "collection", 
                       disabled={item.done || item.uploading}
                       style={{ width: "100%", maxWidth: 200, padding: "6px 9px", marginBottom: 6, background: item.done ? "transparent" : T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 7, color: T.text, fontFamily: "Georgia,serif", fontSize: 12 }}
                     />
+                    {!item.done && !item.uploading && (
+                      <DuplicateWarning compact T={T} matches={findSimilarCans(
+                        { id: `q${i}`, name: item.name, tags: item.tags, countries: item.countries },
+                        [...existingCans, ...queue.map((q, qi) => ({ id: `q${qi}`, name: q.name, tags: q.tags, countries: q.countries, image: q.croppedUrl || q.previewUrl })).slice(0, i)]
+                      )} />
+                    )}
                     {/* Per-item tags */}
                     {!item.done && (
                       <div style={{ position: "relative", marginBottom: 5 }}>
@@ -2448,6 +2460,55 @@ function diceCoefficient(a, b) {
   let overlap = 0;
   for (const g of A) if (B.has(g)) overlap++;
   return (2 * overlap) / (A.size + B.size);
+}
+
+// Live check used by Add/Edit and Bulk Upload: which existing cans look like
+// the one being entered? Same rules as the duplicate scanner, plus a stricter
+// "very similar name" rule that fires without shared tags (the user usually
+// types the name before adding tags).
+function findSimilarCans(candidate, existing, { limit = 3 } = {}) {
+  const n = normalizeCanName(candidate.name);
+  if (!n || n.length < 3) return [];
+  const out = [];
+  for (const c of existing || []) {
+    if (!c || c.id === candidate.id) continue;
+    const m = normalizeCanName(c.name);
+    if (!m) continue;
+    let reason = "";
+    if (m === n) reason = "same name";
+    else {
+      const sim = diceCoefficient(n, m);
+      const sharedTag = (candidate.tags || []).some(t => (c.tags || []).includes(t));
+      const sharedCountry = (candidate.countries || []).some(x => (c.countries || []).includes(x));
+      if (sim >= 0.85 || (sim >= 0.72 && (sharedTag || sharedCountry))) reason = `similar name (${Math.round(sim * 100)}%)`;
+    }
+    if (reason) out.push({ can: c, reason, exact: reason === "same name" });
+  }
+  return out.sort((a, b) => (b.exact - a.exact)).slice(0, limit);
+}
+
+function DuplicateWarning({ matches, T, compact = false, where = "COLLECTION" }) {
+  if (!matches || matches.length === 0) return null;
+  return (
+    <div style={{ background: "#FF6B0014", border: "1.5px solid #FF6B00", borderRadius: 9, padding: compact ? "6px 8px" : "9px 11px", marginBottom: compact ? 6 : 12 }}>
+      <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: compact ? 9 : 10, color: "#FF6B00", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 700 }}>
+        ⚠️ {matches.some(m => m.exact) ? `THIS CAN IS ALREADY IN THE ${where}` : `A VERY SIMILAR CAN IS ALREADY IN THE ${where}`}
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {matches.map(({ can, reason }) => (
+          <div key={can.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {can.image
+              ? <img src={can.image} alt="" style={{ width: 26, height: 36, objectFit: "contain", borderRadius: 3, flexShrink: 0 }} />
+              : <div style={{ width: 26, height: 36, flexShrink: 0 }} />}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textMuted, letterSpacing: "0.08em" }}>{reason.toUpperCase()}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function findDuplicateGroups(cans, { similarityThreshold = 0.72 } = {}) {
@@ -3051,8 +3112,8 @@ function CollectionPage({ T, L, isAdmin }) {
       </div>
 
       {/* Modals */}
-      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTagsRaw} />}
-      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTagsRaw} onDelete={removeCan} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
+      {modal === "add" && <AddEditModal T={T} onSave={can => saveCan(can)} onClose={() => setModal(null)} allTags={allTagsRaw} existingCans={cans} />}
+      {modal === "bulk" && <BulkUploadModal T={T} folder="collection" allTags={allTagsRaw} existingCans={cans} onDelete={removeCan} onSave={async (can) => { await saveCan(can, { closeModal: false, refetch: false }); }} onClose={() => setModal(null)} />}
       {modal === "bulktag" && <BulkTagModal T={T} cans={cans} onSave={async (updatedCans) => { for (const c of updatedCans) { await db.upsertCan(c).catch(console.error); } const rows = await db.getCans().catch(() => null); if (rows) setCans(rows.map(db.rowToCan)); setModal(null); }} onClose={() => setModal(null)} />}
       {modal === "colors" && <TagColorModal T={T} allTags={allTagsRaw} customColors={customColors} tagRoles={tagRoles} onSave={(colors, roles) => { setCustomColors(colors); setTagRoles(roles); }} onClose={() => setModal(null)} />}
       {modal === "recomputeColors" && <RecomputeColorsModal T={T} cans={cans} onSaveCan={can => saveCan(can, { closeModal: false, refetch: false })} onClose={() => setModal(null)} />}
@@ -3345,7 +3406,7 @@ function WishlistPage({ T, L, isAdmin }) {
       </div>
       )}
 
-      {modal === "add" && <AddEditModal T={T} extraFields={["note"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} />}
+      {modal === "add" && <AddEditModal T={T} extraFields={["note"]} folder="wishlist" onSave={saveWish} onClose={() => setModal(null)} allTags={allTagsRaw} existingCans={wishes} />}
       {modal?.wish && !modal.edit && (
         <WishDetailModal T={T} wish={modal.wish} isAdmin={isAdmin}
           onDelete={id => { removeWish(id); setModal(null); }}
