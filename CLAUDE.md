@@ -1937,3 +1937,11 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
 **Why:** a mistaken photo could only be removed before upload; after upload it needed a trip to the collection to delete it.
 
 **Files touched:** `src/App.jsx` (`BulkUploadModal` gets `onDelete` prop, items store `canId`; wired to `removeCan` where the modal is rendered), `src/version.js`.
+
+## 2026-10-16 — v1.4.0: duplicate warning when uploading
+
+**What:** Adding a can (Add modal) or uploading in bulk now shows an orange warning when a very similar can is already saved: thumbnail, name and reason ("same name" / "similar name (87%)") for up to 3 matches. Live as you type the name/tags, never blocks saving. Bulk Upload also compares against earlier items in the same batch. The Wishlist add modal checks against the wishlist. Editing an existing can shows no warning.
+
+**How:** new `findSimilarCans()` + `DuplicateWarning` next to the existing duplicate scanner, reusing `normalizeCanName` and `diceCoefficient`. Match = same normalized name, OR name similarity >= 85%, OR >= 72% with a shared tag/country (same rule as the Duplicates scan, plus the stricter no-tags rule since the name is typed before tags). `AddEditModal` and `BulkUploadModal` got an `existingCans` prop.
+
+**Files touched:** `src/App.jsx`, `src/version.js`.
