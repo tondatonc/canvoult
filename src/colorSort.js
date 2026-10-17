@@ -53,3 +53,53 @@ export function compareColorHex(hexA, hexB) {
   if (!kb) return -1;
   return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
 }
+
+// ─── Sort scope (admin switches) ─────────────────────────────────────────────
+// A scope bundles the knobs that change how colours are ordered. DEFAULT_SORT_SCOPE
+// reproduces the ordering used since v1.3.2 exactly.
+//   hueStart:       degrees added to the hue wheel, so the spectrum starts at this hue.
+//                   0 = red first, 30 = crimson first (default), 60 = magenta first.
+//   greyThreshold:  saturation below which a colour counts as grey (5 strict, 12 normal, 25 loose).
+//   within:         order inside one hue bucket: "light-asc" (dark→light, default),
+//                   "light-desc", "sat-desc" (vivid first), "sat-asc" (muted first).
+//   greyOrder:      "asc" (black→white, default) or "desc".
+export const DEFAULT_SORT_SCOPE = {
+  hueStart: HUE_ROTATION,
+  greyThreshold: GRAYSCALE_SATURATION_THRESHOLD,
+  within: "light-asc",
+  greyOrder: "asc",
+};
+
+export function colorSortKeyWith(hex, scope = DEFAULT_SORT_SCOPE) {
+  const hsl = hexToHsl(hex);
+  if (!hsl) return null;
+  const [h, s, l] = hsl;
+  if (s < scope.greyThreshold) {
+    return [1, 0, scope.greyOrder === "desc" ? -l : l];
+  }
+  let within;
+  switch (scope.within) {
+    case "light-desc": within = -l; break;
+    case "sat-desc": within = -s; break;
+    case "sat-asc": within = s; break;
+    default: within = l; // "light-asc"
+  }
+  return [0, (h + scope.hueStart) % 360, within];
+}
+
+export function compareColorHexWith(hexA, hexB, scope = DEFAULT_SORT_SCOPE) {
+  const ka = colorSortKeyWith(hexA, scope), kb = colorSortKeyWith(hexB, scope);
+  if (!ka && !kb) return 0;
+  if (!ka) return 1;
+  if (!kb) return -1;
+  return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+}
+
+// The colour a can contributes to a given method's sort. Cans saved before
+// multi-method support have no colorMethods, so they fall back to avgColor.
+// Cans that have been processed but lack this method return null (sorted last).
+export function colorValueOf(can, methodId) {
+  const m = can.colorMethods;
+  if (!m) return can.avgColor || null;
+  return m[methodId] || null;
+}
