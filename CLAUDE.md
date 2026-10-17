@@ -1966,3 +1966,15 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
 - **Median vs average:** reference per-channel mean and median over 9 red pixels + 1 blue outlier. The mean drifts darker and sorts before pure red; the median matches pure red. These are test-only reference helpers. The app still uses the count²-weighted histogram mean in `computeAvgColor`.
 
 **Files touched:** `src/colorSort.js` (new), `src/colorSort.test.js` (new), `src/App.jsx`, `package.json` (`test` script), `src/version.js`.
+
+## 2026-10-17 — v1.5.0: selectable color methods (admin only)
+
+**What:** Seven ways to compute a can's `avgColor`, switchable from the admin Recompute Colors modal (🎨 Recompute Colors → "Colour method"). Methods: Current (the existing v1.2 algorithm, unchanged output), Fine histogram (120px, 12-step buckets, top 5), Coarse histogram (40px, 48-step buckets, top 2, linear counts), Vivid histogram (current plus a saturation boost), Plain mean, Saturation mean, Median.
+
+**Compare:** "Compare all methods on 8 cans" runs every method on 8 cans spread evenly across the collection and shows a table of swatches with the photo thumbnail. Click a method name or swatch to make it active.
+
+**Scope:** The chosen method is stored in localStorage (`cv_color_method`) and used only when `cv_admin` is set. Public visitors always get "current". The active method applies to new uploads (Add, Bulk Upload, Add-to-wishlist) and to Recompute. Existing stored colors are not changed unless recomputed.
+
+**How:** New pure module `src/colorMethods.js` (method table, `computeColorFromPixels`, active-method getters and setters). `computeAvgColor(source, methodId)` in `App.jsx` now takes the method and its sample size. `ColorMethodLab` sits inside `RecomputeColorsModal`. Tests in `src/colorMethods.test.js`; `npm test` runs them with the color sort suite (29 total).
+
+**Files touched:** `src/colorMethods.js` (new), `src/colorMethods.test.js` (new), `src/App.jsx`, `package.json` (test script), `src/version.js`.
