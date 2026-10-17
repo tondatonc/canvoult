@@ -1955,3 +1955,14 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
 **Fix:** `getWallPhotos()` now uses `cachedFetch("wall_photos", …)`; `forceSync()` also caches wall photos (non-fatal if the table is missing). `StatsPage` loads cans / wishlist / wall photos with `Promise.allSettled`, so one failing source no longer replaces real data with samples. Users need to open the app online once (or press "Sync now") after updating so wall photos get cached.
 
 **Files touched:** `src/db.js`, `src/App.jsx`, `src/version.js`.
+
+## 2026-10-17 — v1.4.2: color sort tests
+
+**What:** Added a unit test suite for "sort by color". The pure color helpers (`hexToHsl`, `colorSortKey`, and a new `compareColorHex` comparator) moved out of `App.jsx` into `src/colorSort.js` so they can be tested without React. `App.jsx` now imports them; behaviour is unchanged.
+
+**Tests** (`src/colorSort.test.js`, run with `npm test`, Node built-in runner, no new dependencies), 19 cases covering:
+- **Spectrum order:** primaries, full hue wheel in 30° steps, pink-red leading the spectrum, grays last (black → white), darker shades before lighter within a hue.
+- **Sensitivity:** grayscale threshold (s < 12) with a tinted gray (s≈7) and a near-threshold hued color (s≈12.3); a one-step RGB change across the threshold flips the bucket; tiny RGB noise keeps near-identical colors together; the spectrum seam at hue 330° (just above starts the spectrum, just below ends it).
+- **Median vs average:** reference per-channel mean and median over 9 red pixels + 1 blue outlier. The mean drifts darker and sorts before pure red; the median matches pure red. These are test-only reference helpers. The app still uses the count²-weighted histogram mean in `computeAvgColor`.
+
+**Files touched:** `src/colorSort.js` (new), `src/colorSort.test.js` (new), `src/App.jsx`, `package.json` (`test` script), `src/version.js`.
