@@ -1945,3 +1945,13 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
 **How:** new `findSimilarCans()` + `DuplicateWarning` next to the existing duplicate scanner, reusing `normalizeCanName` and `diceCoefficient`. Match = same normalized name, OR name similarity >= 85%, OR >= 72% with a shared tag/country (same rule as the Duplicates scan, plus the stricter no-tags rule since the name is typed before tags). `AddEditModal` and `BulkUploadModal` got an `existingCans` prop.
 
 **Files touched:** `src/App.jsx`, `src/version.js`.
+
+## 2026-10-17 — v1.4.1: Stats page works offline
+
+**What:** With offline mode on and no connection, the Stats page showed placeholder (sample) data instead of the real collection.
+
+**Why:** `getWallPhotos()` was the only fetch on the Stats page not routed through `cachedFetch`, so offline it threw; the single `Promise.all` then hit the catch block and replaced everything with `SAMPLE_CANS`/`SAMPLE_WISHLIST`.
+
+**Fix:** `getWallPhotos()` now uses `cachedFetch("wall_photos", …)`; `forceSync()` also caches wall photos (non-fatal if the table is missing). `StatsPage` loads cans / wishlist / wall photos with `Promise.allSettled`, so one failing source no longer replaces real data with samples. Users need to open the app online once (or press "Sync now") after updating so wall photos get cached.
+
+**Files touched:** `src/db.js`, `src/App.jsx`, `src/version.js`.

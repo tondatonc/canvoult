@@ -35,16 +35,18 @@ function base(table) {
 // can show an error instead of silently doing nothing.
 
 export async function forceSync() {
-  const [cansRows, wishRows, pinnedRows, tagMetaRows] = await Promise.all([
+  const [cansRows, wishRows, pinnedRows, tagMetaRows, wallRows] = await Promise.all([
     request(`${base("cans")}?order=added_at.desc&select=*`, { headers: headers() }),
     request(`${base("wishlist")}?order=added_at.desc&select=*`, { headers: headers() }),
     request(`${base("pinned")}?select=can_id,type`, { headers: headers() }),
     request(`${base("tag_meta")}?id=eq.global&select=colors,roles`, { headers: headers() }),
+    request(`${base("wall_photos")}?order=added_at.desc&select=*`, { headers: headers() }).catch(() => null),
   ]);
   await idbSet("cans", cansRows);
   await idbSet("wishlist", wishRows);
   await idbSet("pinned", pinnedRows || []);
   await idbSet("tag_meta", tagMetaRows);
+  if (wallRows) await idbSet("wall_photos", wallRows);
   const ts = Date.now();
   await idbSet("lastSync", ts);
   return ts;
@@ -126,9 +128,11 @@ export async function deleteWish(id) {
 // ─── WALL PHOTOS ──────────────────────────────────────────────────────────────
 
 export async function getWallPhotos() {
-  return request(`${base("wall_photos")}?order=added_at.desc&select=*`, {
-    headers: headers(),
-  });
+  return cachedFetch("wall_photos", () =>
+    request(`${base("wall_photos")}?order=added_at.desc&select=*`, {
+      headers: headers(),
+    })
+  );
 }
 
 export async function addWallPhoto(photo) {

@@ -3990,16 +3990,18 @@ function StatsPage({ T, L, isAdmin }) {
 
   useEffect(() => {
     const loadData = async () => {
-      try {
-        const [c, w, wp] = await Promise.all([
-          db.isConfigured() ? db.getCans() : Promise.resolve(SAMPLE_CANS),
-          db.isConfigured() ? db.getWishlist() : Promise.resolve(SAMPLE_WISHLIST),
-          db.isConfigured() ? db.getWallPhotos() : Promise.resolve([]),
-        ]);
-        setCans(db.isConfigured() ? c.map(db.rowToCan) : c);
-        setWishes(db.isConfigured() ? w.map(db.rowToWish) : w);
-        setWallPhotos(db.isConfigured() ? wp.map(db.rowToPhoto) : []);
-      } catch { setCans(SAMPLE_CANS); setWishes(SAMPLE_WISHLIST); setWallPhotos([]); }
+      if (!db.isConfigured()) {
+        setCans(SAMPLE_CANS); setWishes(SAMPLE_WISHLIST); setWallPhotos([]);
+      } else {
+        // Load each source independently so one failing (e.g. wall photos
+        // not cached yet while offline) can't wipe the real data with samples.
+        const [c, w, wp] = await Promise.allSettled([db.getCans(), db.getWishlist(), db.getWallPhotos()]);
+        if (c.status === "fulfilled") setCans(c.value.map(db.rowToCan));
+        else { console.error("CanVault stats: cans failed —", c.reason); setCans(SAMPLE_CANS); }
+        if (w.status === "fulfilled") setWishes(w.value.map(db.rowToWish));
+        else { console.error("CanVault stats: wishlist failed —", w.reason); setWishes(SAMPLE_WISHLIST); }
+        setWallPhotos(wp.status === "fulfilled" ? wp.value.map(db.rowToPhoto) : []);
+      }
       setLoading(false);
       // Non-fatal — keeps the brand breakdown chart's colors in sync with Tag Studio across devices.
       if (db.isConfigured()) db.getTagMeta().then(meta => setCustomColors(meta.colors)).catch(() => {});
