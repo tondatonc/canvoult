@@ -192,3 +192,58 @@ test("median is more stable than mean when an outlier is added", () => {
   const medianShift = Math.abs(median(withOutlier.map(p => p[2])) - median(pixels.map(p => p[2])));
   assert.ok(medianShift < meanShift, `median shift ${medianShift} should be < mean shift ${meanShift}`);
 });
+
+// ─── scope ──────────────────────────────────────────────────────────────────
+import {
+  DEFAULT_SORT_SCOPE,
+  colorSortKeyWith,
+  compareColorHexWith,
+  colorValueOf,
+} from "./colorSort.js";
+
+test("default scope gives the same keys as the original colorSortKey", () => {
+  for (const hex of ["#ff0000", "#dc143c", "#ff8000", "#00ff00", "#0000ff", "#ff00ff", "#800000", "#808080", "#ffffff", "#000000", "#806464"]) {
+    assert.deepEqual(colorSortKeyWith(hex, DEFAULT_SORT_SCOPE), colorSortKey(hex), hex);
+  }
+});
+
+test("hueStart moves the spectrum start: 0 puts pure red first", () => {
+  const scope = { ...DEFAULT_SORT_SCOPE, hueStart: 0 };
+  const sorted = ["#ff0000", "#dc143c", "#ff8000"].sort((a, b) => compareColorHexWith(a, b, scope));
+  // red (0°) first, orange (30°), then crimson (348°) at the end
+  assert.deepEqual(sorted, ["#ff0000", "#ff8000", "#dc143c"]);
+});
+
+test("greyThreshold controls sensitivity: a tinted gray is grey when loose, hued when strict", () => {
+  const tinted = "#806464"; // s≈12.3
+  assert.equal(colorSortKeyWith(tinted, { ...DEFAULT_SORT_SCOPE, greyThreshold: 25 })[0], 1);
+  assert.equal(colorSortKeyWith(tinted, { ...DEFAULT_SORT_SCOPE, greyThreshold: 5 })[0], 0);
+});
+
+test("within: sat-desc puts the most vivid shade first inside one hue", () => {
+  const scope = { ...DEFAULT_SORT_SCOPE, within: "sat-desc" };
+  // same hue; #ff0000 is fully saturated (100), #cc6666 is muted (50)
+  const sorted = ["#cc6666", "#ff0000"].sort((a, b) => compareColorHexWith(a, b, scope));
+  assert.deepEqual(sorted, ["#ff0000", "#cc6666"]);
+});
+
+test("within: light-desc reverses lightness inside one hue", () => {
+  const scope = { ...DEFAULT_SORT_SCOPE, within: "light-desc" };
+  const sorted = ["#800000", "#ff0000"].sort((a, b) => compareColorHexWith(a, b, scope));
+  assert.deepEqual(sorted, ["#ff0000", "#800000"]);
+});
+
+test("greyOrder desc sorts white before black", () => {
+  const scope = { ...DEFAULT_SORT_SCOPE, greyOrder: "desc" };
+  const sorted = ["#000000", "#808080", "#ffffff"].sort((a, b) => compareColorHexWith(a, b, scope));
+  assert.deepEqual(sorted, ["#ffffff", "#808080", "#000000"]);
+});
+
+test("colorValueOf: uses the method's colour, falls back to avgColor only for legacy cans", () => {
+  const modern = { avgColor: "#111111", colorMethods: { median: "#ff0000" } };
+  assert.equal(colorValueOf(modern, "median"), "#ff0000");
+  assert.equal(colorValueOf(modern, "mean"), null); // computed set exists but lacks this method
+  const legacy = { avgColor: "#222222" };
+  assert.equal(colorValueOf(legacy, "median"), "#222222");
+  assert.equal(colorValueOf({}, "median"), null);
+});
