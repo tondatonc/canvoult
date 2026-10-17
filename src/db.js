@@ -271,3 +271,18 @@ export const isConfigured = () => !!(
   SUPABASE_URL !== "undefined" &&
   SUPABASE_KEY !== "undefined"
 );
+
+// ─── COLOUR VOTES ─────────────────────────────────────────────────────────────
+// One row per voter (primary key), so changing your vote overwrites it.
+
+export async function getColorVotes() {
+  return request(`${base("color_votes")}?select=*`, { headers: headers() });
+}
+
+export async function setColorVote(voter, method, scope) {
+  return request(`${base("color_votes")}?on_conflict=voter`, {
+    method: "POST",
+    headers: headers({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+    body: JSON.stringify({ voter, method, scope, created_at: new Date().toISOString() }),
+  });
+}
