@@ -90,3 +90,12 @@ test("every method's sample size is a sensible scale", () => {
 test("empty pixel data returns null for every method", () => {
   for (const m of COLOR_METHODS) assert.equal(computeColorFromPixels(new Uint8ClampedArray(0), m), null, m.id);
 });
+
+import { tallyVotes as _tally } from "./colorMethods.js";
+test("tallyVotes counts per method and ignores unknown methods", () => {
+  const t = _tally([{ method: "median" }, { method: "median" }, { method: "vivid" }, { method: "nope" }]);
+  assert.equal(t.median, 2);
+  assert.equal(t.vivid, 1);
+  assert.equal(t.current, 0);
+  assert.equal(t.nope, undefined);
+});
