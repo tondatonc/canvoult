@@ -67,21 +67,35 @@ export async function getCans() {
 }
 
 export async function upsertCan(can) {
-  return request(base("cans"), {
+  const row = {
+    id: can.id,
+    name: can.name,
+    image_url: can.image || null,
+    tags: can.tags,
+    note: can.note || null,
+    countries: can.countries || [],
+    added_at: new Date(can.addedAt).toISOString(),
+    date_unknown: can.dateUnknown || false,
+    avg_color: can.avgColor || null,
+  };
+  // undefined = leave the stored value alone; null/object = write it
+  if (can.colorMethods !== undefined) row.color_methods = can.colorMethods;
+  const post = body => request(base("cans"), {
     method: "POST",
     headers: headers({ Prefer: "resolution=merge-duplicates,return=minimal" }),
-    body: JSON.stringify({
-      id: can.id,
-      name: can.name,
-      image_url: can.image || null,
-      tags: can.tags,
-      note: can.note || null,
-      countries: can.countries || [],
-      added_at: new Date(can.addedAt).toISOString(),
-      date_unknown: can.dateUnknown || false,
-      avg_color: can.avgColor || null,
-    }),
+    body: JSON.stringify(body),
   });
+  try {
+    return await post(row);
+  } catch (err) {
+    // Column not created yet (migration_color_methods.sql not run): save without it
+    if (row.color_methods !== undefined && /color_methods/.test(err.message)) {
+      console.warn("cans.color_methods column missing — run supabase/migration_color_methods.sql");
+      const { color_methods, ...rest } = row;
+      return post(rest);
+    }
+    throw err;
+  }
 }
 
 export async function deleteCan(id) {
@@ -230,6 +244,7 @@ export const rowToCan = r => ({
   addedAt: new Date(r.added_at).getTime(),
   dateUnknown: r.date_unknown || false,
   avgColor: r.avg_color || null,
+  colorMethods: r.color_methods || null,
 });
 
 export const rowToWish = r => ({
