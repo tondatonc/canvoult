@@ -6,6 +6,7 @@ import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, get
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 import { APP_VERSION } from "./version.js";
 import { compareColorHex } from "./colorSort.js";
+import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId } from "./colorMethods.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
 
@@ -367,24 +368,13 @@ async function compressCanPhoto(file) {
 }
 
 // Compute the representative ("dominant") color of a can photo, ignoring the
-// white/near-white border the app pads photos with (see compressCanPhoto) and
-// ignoring fully transparent pixels (PNGs). Returns a "#rrggbb" string, or
-// null on failure. Accepts either a File/Blob or an already-loaded
-// HTMLImageElement.
-//
-// Rather than a flat mean of every remaining pixel (which muddies multi-color
-// labels — e.g. a red-and-blue can averaging into a dull brown/purple that
-// matches neither color), this buckets pixels into a coarse color histogram
-// and returns a count-weighted average of the most common buckets. That way
-// the color that visually dominates the can wins, with a light blend across
-// the top few buckets so near-tied colors don't jump erratically between
-// similar photos.
-async function computeAvgColor(source) {
-  const WHITE_THRESHOLD = 235; // r,g,b all >= this counts as "white border"
-  const ALPHA_THRESHOLD = 16;  // pixels with alpha below this are skipped
-  const SAMPLE = 60;           // downscale to this box for speed — color avg doesn't need full res
-  const BUCKET = 24;           // quantization step per channel for the histogram (256/24 ≈ 11 buckets/channel)
-  const TOP_N = 3;             // blend the top N buckets, weighted by how common each is
+// white/near-white border and transparent pixels. Returns "#rrggbb" or null.
+// The algorithm is chosen by methodId (see colorMethods.js). By default it is
+// the active method: "current" for everyone, or the admin's pick when signed in.
+// Accepts a File/Blob or an already-loaded HTMLImageElement.
+async function computeAvgColor(source, methodId = getActiveColorMethodId()) {
+  const method = getColorMethod(methodId);
+  const SAMPLE = method.sample; // downscale for speed — the colour doesn't need full resolution
 
   const fromImage = (img) => {
     try {
@@ -393,33 +383,7 @@ async function computeAvgColor(source) {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
       const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
-
-      // bucketKey -> { count, r, g, b } (r/g/b are sums of the *actual* pixel
-      // values in that bucket, so the final color isn't snapped to a bucket
-      // boundary — only which bucket a pixel falls into is quantized).
-      const buckets = new Map();
-      for (let i = 0; i < data.length; i += 4) {
-        const pr = data[i], pg = data[i + 1], pb = data[i + 2], pa = data[i + 3];
-        if (pa < ALPHA_THRESHOLD) continue; // transparent — skip
-        if (pr >= WHITE_THRESHOLD && pg >= WHITE_THRESHOLD && pb >= WHITE_THRESHOLD) continue; // white border — skip
-        const key = ((pr / BUCKET) | 0) * 10000 + ((pg / BUCKET) | 0) * 100 + ((pb / BUCKET) | 0);
-        let bucket = buckets.get(key);
-        if (!bucket) { bucket = { count: 0, r: 0, g: 0, b: 0 }; buckets.set(key, bucket); }
-        bucket.count++; bucket.r += pr; bucket.g += pg; bucket.b += pb;
-      }
-      if (buckets.size === 0) return null; // whole image was border/transparent — bail
-
-      // Weight super-linearly (count^2) so the dominant bucket clearly wins
-      // over minor ones, while still smoothing across near-ties in the top N.
-      const top = [...buckets.values()].sort((a, b) => b.count - a.count).slice(0, TOP_N);
-      let wr = 0, wg = 0, wb = 0, wSum = 0;
-      for (const bucket of top) {
-        const avgR = bucket.r / bucket.count, avgG = bucket.g / bucket.count, avgB = bucket.b / bucket.count;
-        const weight = bucket.count * bucket.count;
-        wr += avgR * weight; wg += avgG * weight; wb += avgB * weight; wSum += weight;
-      }
-      const hex = v => Math.round(v / wSum).toString(16).padStart(2, "0");
-      return `#${hex(wr)}${hex(wg)}${hex(wb)}`;
+      return computeColorFromPixels(data, method);
     } catch {
       return null; // e.g. canvas tainted by CORS
     }
@@ -2288,6 +2252,113 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
 }
 
 // ─── RECOMPUTE COLORS MODAL ───────────────────────────────────────────────────
+// Admin-only: pick the colour method used for new uploads and recompute, and
+// compare every method side by side on a spread of real cans to choose the best.
+function ColorMethodLab({ T, cans }) {
+  const [active, setActive] = useState(getActiveColorMethodId());
+  const [rows, setRows] = useState(null); // [{ name, image, colors: {methodId: hex|null} }]
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const choose = (id) => { setActiveColorMethodId(id); setActive(id); };
+
+  const compare = async () => {
+    const withImg = cans.filter(c => c.image);
+    if (withImg.length === 0) { setErr("No cans with photos to compare."); return; }
+    // spread the sample evenly across the collection
+    const n = Math.min(8, withImg.length);
+    const picks = Array.from({ length: n }, (_, i) => withImg[Math.floor(i * withImg.length / n)]);
+    setBusy(true); setErr(""); setRows(null);
+    const out = [];
+    for (const can of picks) {
+      try {
+        const img = await loadImageCrossOrigin(can.image);
+        const colors = {};
+        for (const m of COLOR_METHODS) colors[m.id] = await computeAvgColor(img, m.id);
+        out.push({ name: can.name, image: can.image, colors });
+      } catch {
+        out.push({ name: can.name, image: can.image, colors: null });
+      }
+      setRows([...out]);
+    }
+    setBusy(false);
+  };
+
+  const cardStyle = (on) => ({
+    textAlign: "left", padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+    background: on ? "#C8102E" : T.bgCard, color: on ? "#fff" : T.textMuted,
+    border: `2px solid ${on ? "#C8102E" : T.border}`, fontFamily: "'Oswald',sans-serif",
+  });
+
+  return (
+    <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: `1.5px solid ${T.border}` }}>
+      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: T.textFaint, letterSpacing: "0.12em", marginBottom: 8 }}>
+        🔬 COLOUR METHOD (ADMIN ONLY) — used for new uploads and for recompute
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 8, marginBottom: 10 }}>
+        {COLOR_METHODS.map(m => (
+          <button key={m.id} onClick={() => choose(m.id)} style={cardStyle(active === m.id)}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.05em" }}>
+              {active === m.id ? "● " : ""}{m.label}
+            </div>
+            <div style={{ fontSize: 10, opacity: 0.85, marginTop: 4, lineHeight: 1.4, fontFamily: "system-ui,sans-serif" }}>{m.description}</div>
+          </button>
+        ))}
+      </div>
+
+      <button onClick={compare} disabled={busy} style={{ width: "100%", padding: "10px", background: "transparent", border: `2px solid ${T.border}`, borderRadius: 10, color: T.textMuted, fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", cursor: busy ? "wait" : "pointer", marginBottom: 8 }}>
+        {busy ? `⏳ Comparing… (${rows ? rows.length : 0} / 8)` : "🔬 COMPARE ALL METHODS ON 8 CANS"}
+      </button>
+      {err && <div style={{ fontSize: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", marginBottom: 8 }}>{err}</div>}
+
+      {rows && rows.length > 0 && (
+        <div style={{ overflowX: "auto", marginTop: 8 }}>
+          <table style={{ borderCollapse: "collapse", fontFamily: "'Oswald',sans-serif", fontSize: 10, color: T.textMuted }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "4px 8px", minWidth: 120 }}>Can</th>
+                {COLOR_METHODS.map(m => (
+                  <th key={m.id} onClick={() => choose(m.id)} title={m.description} style={{ padding: "4px 6px", cursor: "pointer", color: active === m.id ? "#C8102E" : T.textMuted, whiteSpace: "nowrap" }}>
+                    {active === m.id ? "● " : ""}{m.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} style={{ borderTop: `1px solid ${T.border}` }}>
+                  <td style={{ padding: "6px 8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <img src={row.image} alt="" style={{ width: 26, height: 36, objectFit: "contain" }} />
+                      <span style={{ maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
+                    </div>
+                  </td>
+                  {COLOR_METHODS.map(m => {
+                    const hex = row.colors ? row.colors[m.id] : null;
+                    return (
+                      <td key={m.id} style={{ padding: "6px", textAlign: "center" }} onClick={() => hex && choose(m.id)}>
+                        {hex ? (
+                          <>
+                            <div title={`${m.label}: ${hex}`} style={{ width: 40, height: 28, margin: "0 auto", borderRadius: 6, background: hex, border: active === m.id ? "3px solid #C8102E" : `1px solid ${T.border}` }} />
+                            <div style={{ marginTop: 3, fontSize: 9 }}>{hex}</div>
+                          </>
+                        ) : <span style={{ fontSize: 9 }}>—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10, color: T.textFaint, marginTop: 6, fontFamily: "system-ui,sans-serif" }}>
+            Click a method name or swatch to make it the active method. Judge by the swatch that best matches the can photo.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // One-off backfill utility: cans/wishes added before the avgColor feature
 // shipped have no stored color. This loads each missing-color image cross-
 // origin from Blob storage, samples it client-side, and saves the result.
@@ -2343,6 +2414,8 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
         🎨 Recompute Colors
       </div>
       <div style={{ width: 46, height: 3, background: "#C8102E", margin: "0 auto 18px", borderRadius: 2 }} />
+
+      {state === "idle" && <ColorMethodLab T={T} cans={cans} />}
 
       {state === "idle" && (
         <label style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", marginBottom: 14, fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.03em", cursor: "pointer" }}>
