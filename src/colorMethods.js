@@ -163,3 +163,10 @@ export function computeColorFromPixels(data, methodOrId) {
   if (m.kind === "median") return medianColor(pixels);
   return null;
 }
+
+// Count votes per method from rows shaped { method }. Unknown methods are ignored.
+export function tallyVotes(rows) {
+  const tally = Object.fromEntries(COLOR_METHODS.map(m => [m.id, 0]));
+  for (const r of rows) if (r && tally[r.method] !== undefined) tally[r.method]++;
+  return tally;
+}
