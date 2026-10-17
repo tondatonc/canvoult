@@ -1978,3 +1978,20 @@ alpha (`#ffffff22`) so the highlight rendered solid white.
 **How:** New pure module `src/colorMethods.js` (method table, `computeColorFromPixels`, active-method getters and setters). `computeAvgColor(source, methodId)` in `App.jsx` now takes the method and its sample size. `ColorMethodLab` sits inside `RecomputeColorsModal`. Tests in `src/colorMethods.test.js`; `npm test` runs them with the color sort suite (29 total).
 
 **Files touched:** `src/colorMethods.js` (new), `src/colorMethods.test.js` (new), `src/App.jsx`, `package.json` (test script), `src/version.js`.
+
+## 2026-10-17 — v1.6.0: all colour methods stored per can, combinable sort switches (admin)
+
+**What:** Every add, bulk upload, crop edit and Recompute now computes all 7 colour methods for a photo at once and stores them per can in a new `cans.color_methods` jsonb column (`{ current: "#…", vivid: "#…", median: "#…", … }`). `avgColor` is still set from the active method, so public sorting is unchanged. When signed in, the Collection's "Sort by color" shows switches above the sort bar:
+- **Method:** ◀ ▶ click-through and pills; the whole collection re-sorts by that method's colour.
+- **START:** where the hue spectrum starts (red / crimson / magenta).
+- **GREYS:** grey sensitivity (strict / normal / loose), saturation threshold 5 / 12 / 25.
+- **WITHIN:** order inside one hue (dark→light, light→dark, vivid first, muted first).
+- **GREY ORDER:** black→white or white→black.
+
+The switches combine freely. Admin choices persist in localStorage (`cv_color_sort`). Public visitors get the original sort. The Wishlist is unchanged and still sorts by `avgColor`.
+
+**Required once:** run `supabase/migration_color_methods.sql` in the Supabase SQL editor. Until then, saves still work (the app drops the `color_methods` field and logs a warning), but the method switches have nothing to read. Cans without per-method colours show a warning in the switch panel. Run Recompute Colors (missing ones) to fill them in.
+
+**How:** `src/colorSort.js` gets `colorSortKeyWith` / `compareColorHexWith` (a scope object) and `colorValueOf`. The default scope reproduces the old ordering exactly (tested). `src/App.jsx`: `computeAllColorMethods`, `useColorSortPrefs`, `ColorSortControls`, `sortCans(…, colorOpts)`. `src/db.js`: `upsertCan` writes `color_methods` and retries without it if the column is missing; `rowToCan` maps it.
+
+**Files touched:** `src/colorSort.js`, `src/colorSort.test.js` (36 tests total with `npm test`), `src/App.jsx`, `src/db.js`, `supabase/migration_color_methods.sql` (new), `src/version.js`.
