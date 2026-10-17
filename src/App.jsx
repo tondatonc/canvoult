@@ -5,7 +5,7 @@ import * as db from "./db.js";
 import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 import { APP_VERSION } from "./version.js";
-import { compareColorHex } from "./colorSort.js";
+import { compareColorHexWith, colorValueOf, DEFAULT_SORT_SCOPE } from "./colorSort.js";
 import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId } from "./colorMethods.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
@@ -400,6 +400,26 @@ async function computeAvgColor(source, methodId = getActiveColorMethodId()) {
     img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
   });
+}
+
+function blobToImage(blob) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+// Compute every colour method for one photo in a single decode.
+// Returns { methodId: "#rrggbb" | null } or null if the photo can't be loaded.
+async function computeAllColorMethods(source) {
+  const img = source instanceof HTMLImageElement ? source : await blobToImage(source);
+  if (!img) return null;
+  const out = {};
+  for (const m of COLOR_METHODS) out[m.id] = await computeAvgColor(img, m.id);
+  return out;
 }
 
 // Sample an image to estimate what % of its pixels are near-white
@@ -1187,6 +1207,76 @@ function makeGridZoomWheelHandler(viewMode, setViewMode) {
   };
 }
 
+// Admin-only sort prefs (method + scope), persisted in localStorage. Everyone else
+// gets opts = null, so the Collection sorts by avgColor exactly as before.
+const COLOR_SORT_KEY = "cv_color_sort";
+function readColorSortPrefs() {
+  const fallback = { methodId: getActiveColorMethodId(), scope: DEFAULT_SORT_SCOPE };
+  try {
+    const p = JSON.parse(localStorage.getItem(COLOR_SORT_KEY) || "{}");
+    return { methodId: p.methodId || fallback.methodId, scope: { ...DEFAULT_SORT_SCOPE, ...(p.scope || {}) } };
+  } catch {
+    return fallback;
+  }
+}
+function useColorSortPrefs(isAdmin) {
+  const [prefs, setPrefs] = useState(readColorSortPrefs);
+  const update = patch => setPrefs(prev => {
+    const next = { ...prev, ...patch, scope: { ...prev.scope, ...(patch.scope || {}) } };
+    try { localStorage.setItem(COLOR_SORT_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
+    return next;
+  });
+  const opts = useMemo(() => (isAdmin ? { methodId: prefs.methodId, scope: prefs.scope } : null), [isAdmin, prefs]);
+  return {
+    opts,
+    methodId: prefs.methodId,
+    scope: prefs.scope,
+    setMethodId: id => update({ methodId: id }),
+    setScope: patch => update({ scope: patch }),
+  };
+}
+
+// Admin switches shown above the sort bar when sorting by colour.
+function ColorSortControls({ T, controls }) {
+  const { methodId, setMethodId, scope, setScope, notComputed, total } = controls;
+  const idx = Math.max(0, COLOR_METHODS.findIndex(m => m.id === methodId));
+  const step = d => setMethodId(COLOR_METHODS[(idx + d + COLOR_METHODS.length) % COLOR_METHODS.length].id);
+  const chip = (on, label, onClick, key) => (
+    <button key={key} onClick={onClick} style={{ padding: "3px 9px", borderRadius: 999, fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.06em", cursor: "pointer", background: on ? "#C8102E" : T.bgCard, color: on ? "#fff" : T.textMuted, border: `1.5px solid ${on ? "#C8102E" : T.border}` }}>{label}</button>
+  );
+  const group = (title, options, value, onPick) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.15em", marginRight: 4, minWidth: 70 }}>{title}</span>
+      {options.map(o => chip(o.v === value, o.l, () => onPick(o.v), String(o.v)))}
+    </div>
+  );
+  const HUE = [{ v: 0, l: "red" }, { v: 30, l: "crimson" }, { v: 60, l: "magenta" }];
+  const GREY = [{ v: 5, l: "strict" }, { v: 12, l: "normal" }, { v: 25, l: "loose" }];
+  const WITHIN = [{ v: "light-asc", l: "dark→light" }, { v: "light-desc", l: "light→dark" }, { v: "sat-desc", l: "vivid first" }, { v: "sat-asc", l: "muted first" }];
+  const GREY_ORDER = [{ v: "asc", l: "black→white" }, { v: "desc", l: "white→black" }];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", marginBottom: 12, border: `1.5px dashed ${T.border}`, borderRadius: 10, background: T.bgCard }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.15em", marginRight: 4, minWidth: 70 }}>🎨 METHOD</span>
+        {chip(false, "◀", () => step(-1), "prev")}
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, color: "#C8102E", minWidth: 130, textAlign: "center" }}>{COLOR_METHODS[idx].label}</span>
+        {chip(false, "▶", () => step(1), "next")}
+        <span style={{ width: 8 }} />
+        {COLOR_METHODS.map(m => chip(m.id === methodId, m.label, () => setMethodId(m.id), m.id))}
+      </div>
+      {group("START", HUE, scope.hueStart, v => setScope({ hueStart: v }))}
+      {group("GREYS", GREY, scope.greyThreshold, v => setScope({ greyThreshold: v }))}
+      {group("WITHIN", WITHIN, scope.within, v => setScope({ within: v }))}
+      {group("GREY ORDER", GREY_ORDER, scope.greyOrder, v => setScope({ greyOrder: v }))}
+      {notComputed > 0 && (
+        <div style={{ fontSize: 10, color: "#C8102E", fontFamily: "'Oswald',sans-serif" }}>
+          ⚠ {notComputed} of {total} cans have no per-method colours yet — run 🎨 Recompute Colors to fill them in.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SortBar({ sort, setSort, viewMode, setViewMode, T, L }) {
   const sorts = [
     { v: "newest", l: L.sortNewest },
@@ -1265,7 +1355,7 @@ function getSizeMl(can, tagRoles) {
   const sizeTag = (can.tags || []).find(t => tagRoles[t] === "size");
   return sizeTag ? parseSizeMl(sizeTag) : null;
 }
-function sortCans(cans, sort, tagRoles = {}) {
+function sortCans(cans, sort, tagRoles = {}, colorOpts = null) {
   return [...cans].sort((a, b) => {
     if (sort === "newest") return b.addedAt - a.addedAt;
     if (sort === "oldest") return a.addedAt - b.addedAt;
@@ -1286,8 +1376,10 @@ function sortCans(cans, sort, tagRoles = {}) {
       return sb - sa || a.name.localeCompare(b.name);
     }
     if (sort === "color") {
-      // colorless cans sort last (handled inside compareColorHex)
-      return compareColorHex(a.avgColor, b.avgColor) || a.name.localeCompare(b.name);
+      // colorOpts = admin's method + scope; null = everyone else, who sort by avgColor as before
+      const scope = colorOpts?.scope || DEFAULT_SORT_SCOPE;
+      const valueOf = c => (colorOpts ? colorValueOf(c, colorOpts.methodId) : (c.avgColor || null));
+      return compareColorHexWith(valueOf(a), valueOf(b), scope) || a.name.localeCompare(b.name);
     }
     if (sort === "countries") return (b.countries || []).length - (a.countries || []).length;
     return 0;
@@ -1302,6 +1394,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
   const [tags, setTags] = useState(initial.tags || []);
   const [image, setImage] = useState(initial.image || null);
   const [avgColor, setAvgColor] = useState(initial.avgColor || null);
+  const [colorMethods, setColorMethods] = useState(initial.colorMethods || null);
   const [note, setNote] = useState(initial.note || "");
   const [countries, setCountries] = useState(initial.countries || []);
   const [drag, setDrag] = useState(false);
@@ -1356,7 +1449,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
     const oldImage = image; // capture the photo we're about to replace, so we can delete it once the new one is safely up
     try {
       const compressed = await compressCanPhoto(croppedFile);
-      computeAvgColor(compressed).then(setAvgColor); // fire-and-forget, doesn't block upload
+      computeAllColorMethods(compressed).then(cm => { setColorMethods(cm); setAvgColor(cm ? cm[getActiveColorMethodId()] || null : null); }); // fire-and-forget, doesn't block upload
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
@@ -1476,7 +1569,7 @@ function AddEditModal({ T, onSave, onClose, initial = {}, extraFields = [], fold
         </label>
       </div>
 
-      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, avgColor, note, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
+      <button onClick={() => { if (name.trim()) onSave({ id: initial.id || Date.now().toString(), name: name.trim(), tags, image, avgColor, colorMethods, note, countries, dateUnknown, addedAt: dateUnknown ? (initial.addedAt || Date.now()) : new Date(dateVal).getTime() || Date.now() }); }}
         disabled={!name.trim()}
         style={{ width: "100%", padding: "13px", background: name.trim() ? "#C8102E" : T.border, border: "none", borderRadius: 11, color: name.trim() ? "#fff" : T.textFaint, fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: "0.15em", cursor: name.trim() ? "pointer" : "not-allowed", boxShadow: name.trim() ? "0 4px 16px #C8102E44" : "none", transition: "all 0.2s" }}>
         {initial.id ? "SAVE CHANGES" : "ADD TO VAULT"}
@@ -1764,7 +1857,8 @@ function BulkUploadModal({ T, onSave, onDelete, onClose, folder = "collection", 
       try {
         const src = item.croppedFile || item.file;
         const compressed = await compressCanPhoto(src);
-        const avgColor = await computeAvgColor(compressed);
+        const colorMethods = await computeAllColorMethods(compressed);
+        const avgColor = colorMethods ? colorMethods[getActiveColorMethodId()] || null : null;
         const res = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "image/jpeg", "x-filename": `${folder}/${Date.now()}.jpg`, "x-canvault-auth": atob(_PH) },
@@ -1776,7 +1870,7 @@ function BulkUploadModal({ T, onSave, onDelete, onClose, folder = "collection", 
         const pd = perItemDates[i] || {};
         const iDate = pd.date !== undefined ? pd.date : item.date;
         const iUnknown = pd.dateUnknown !== undefined ? pd.dateUnknown : item.dateUnknown;
-        await onSave({ id: canId, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, avgColor, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
+        await onSave({ id: canId, name: item.name.trim() || `Can ${i + 1}`, tags: item.tags, countries: item.countries || [], dateUnknown: iUnknown || false, image: url, avgColor, colorMethods, addedAt: iUnknown ? Date.now() : (iDate ? new Date(iDate).getTime() || Date.now() : Date.now()) });
         updateItem(i, { uploading: false, done: true, url, canId });
       } catch (err) {
         updateItem(i, { uploading: false, err: err.message });
@@ -2375,7 +2469,7 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
   }, []);
 
   const missing = [
-    ...cans.filter(c => c.image && !c.avgColor).map(c => ({ item: c, kind: "can" })),
+    ...cans.filter(c => c.image && (!c.avgColor || !c.colorMethods)).map(c => ({ item: c, kind: "can" })),
     ...wishes.filter(w => w.image && !w.avgColor).map(w => ({ item: w, kind: "wish" })),
   ];
   const all = [
@@ -2393,9 +2487,10 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
     for (const { item, kind } of targets) {
       try {
         const img = await loadImageCrossOrigin(item.image);
-        const avgColor = await computeAvgColor(img);
+        const colorMethods = await computeAllColorMethods(img);
+        const avgColor = colorMethods ? colorMethods[getActiveColorMethodId()] || null : null;
         if (!avgColor) throw new Error("no usable pixels");
-        if (kind === "can") await onSaveCan({ ...item, avgColor });
+        if (kind === "can") await onSaveCan({ ...item, avgColor, colorMethods });
         else await db.upsertWish({ ...item, avgColor }).catch(err => { throw err; });
         done++;
         addLog(`✅ ${item.name}`);
@@ -2433,7 +2528,7 @@ function RecomputeColorsModal({ T, cans, onSaveCan, onClose }) {
           <p style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted, letterSpacing: "0.05em", marginBottom: 16 }}>
             {forceAll
               ? `${targets.length} item${targets.length === 1 ? "" : "s"} will be recomputed — this samples each photo (ignoring the white border) and overwrites the stored color.`
-              : `${targets.length} item${targets.length === 1 ? "" : "s"} missing a color — this samples each photo (ignoring the white border) and saves the result so "Sort by color" works for them too.`}
+              : `${targets.length} item${targets.length === 1 ? "" : "s"} missing a colour or per-method colours — this samples each photo (ignoring the white border) and saves the result so "Sort by color" works for them too.`}
           </p>
           {state === "idle" && (
             <button onClick={run} style={{ width: "100%", padding: "12px", background: "#C8102E", border: "none", borderRadius: 10, color: "#fff", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", cursor: "pointer", marginBottom: 14 }}>
@@ -2890,6 +2985,7 @@ function LoadingSpinner({ T }) {
 // ─── COLLECTION PAGE ──────────────────────────────────────────────────────────
 
 function CollectionPage({ T, L, isAdmin }) {
+  const colorPrefs = useColorSortPrefs(isAdmin);
   const [cans, setCans] = useState([]);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -2983,10 +3079,16 @@ function CollectionPage({ T, L, isAdmin }) {
       const matchCountry = !activeCountry || (can.countries || []).includes(activeCountry);
       return matchSearch && matchTags && matchCountry;
     });
-    const filtered = sortCans(baseFiltered.filter(c => !pinned.includes(c.id)), sort, tagRoles);
+    const filtered = sortCans(baseFiltered.filter(c => !pinned.includes(c.id)), sort, tagRoles, colorPrefs.opts);
     const pinnedCans = baseFiltered.filter(c => pinned.includes(c.id));
     return { pinnedCans, allFiltered: [...pinnedCans, ...filtered] };
-  }, [cans, search, activeTags, activeCountry, pinned, sort, tagRoles]);
+  }, [cans, search, activeTags, activeCountry, pinned, sort, tagRoles, colorPrefs.opts]);
+
+  const colorUi = isAdmin && sort === "color" ? {
+    methodId: colorPrefs.methodId, setMethodId: colorPrefs.setMethodId,
+    scope: colorPrefs.scope, setScope: colorPrefs.setScope,
+    notComputed: cans.filter(c => !c.colorMethods).length, total: cans.length,
+  } : null;
 
   const togglePin = async (id) => {
     const was = pinned.includes(id);
@@ -3121,6 +3223,7 @@ function CollectionPage({ T, L, isAdmin }) {
 
       {/* ── Sort + view ── */}
       <div data-tut="sort-bar">
+        {colorUi && <ColorSortControls T={T} controls={colorUi} />}
         <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
       </div>
       </div>
@@ -4473,7 +4576,8 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
     setSavingCrop(true); setCropErr("");
     try {
       const compressed = await compressCanPhoto(croppedFile);
-      const avgColor = await computeAvgColor(compressed).catch(() => item.avgColor);
+      const cm = await computeAllColorMethods(compressed).catch(() => null);
+      const avgColor = cm ? (cm[getActiveColorMethodId()] || item.avgColor) : item.avgColor;
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: {
@@ -4488,7 +4592,7 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
         throw new Error(`${res.status}: ${err.error || "unknown"}`);
       }
       const { url } = await res.json();
-      await handleSaved({ ...item, image: url, avgColor });
+      await handleSaved({ ...item, image: url, avgColor, colorMethods: cm || item.colorMethods || null });
       deleteOldBlobIfReplaced(item.image, url);
     } catch (err) {
       setCropErr(`Save failed — ${err.message}`);
