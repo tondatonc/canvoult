@@ -6,13 +6,14 @@ import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, get
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 import { APP_VERSION } from "./version.js";
 import { compareColorHexWith, colorValueOf, DEFAULT_SORT_SCOPE } from "./colorSort.js";
-import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId } from "./colorMethods.js";
+import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId, tallyVotes } from "./colorMethods.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
 
 
 const _PH = "c29kYWNhbjEyMw==";
-function checkPw(pw) { try { return atob(_PH) === pw; } catch { return false; } }
+const _TP = "dGVzdGVyLWNhbnZhdWx0"; // tester (read-only + voting) password
+function checkPw(pw) { try { if (atob(_PH) === pw) return "admin"; if (atob(_TP) === pw) return "tester"; } catch { /* fall through */ } return null; }
 
 // Human-readable byte size for the offline backup indicator. null/undefined
 // means "unknown" (StorageManager API unsupported), shown as an em dash
@@ -1270,9 +1271,53 @@ function ColorSortControls({ T, controls }) {
       {group("GREY ORDER", GREY_ORDER, scope.greyOrder, v => setScope({ greyOrder: v }))}
       {notComputed > 0 && (
         <div style={{ fontSize: 10, color: "#C8102E", fontFamily: "'Oswald',sans-serif" }}>
-          ⚠ {notComputed} of {total} cans have no per-method colours yet — run 🎨 Recompute Colors to fill them in.
+          ⚠ {notComputed} of {total} cans have no per-method colours yet — an admin needs to run 🎨 Recompute Colors.
         </div>
       )}
+      <ColorVotePanel T={T} scope={scope} />
+    </div>
+  );
+}
+
+// Voting: testers (and admins) pick the colour method that looks best. One vote per
+// browser; each vote is saved with the switch settings in use, so combinations can be compared.
+function getVoterId() {
+  let id = localStorage.getItem("cv_voter_id");
+  if (!id) {
+    id = (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("cv_voter_id", id);
+  }
+  return id;
+}
+function ColorVotePanel({ T, scope }) {
+  const [votes, setVotes] = useState(null);
+  const [err, setErr] = useState("");
+  const voter = useMemo(getVoterId, []);
+  const load = () => db.getColorVotes().then(rows => setVotes(rows || [])).catch(() => { setErr("Could not load votes — run supabase/migration_color_votes.sql"); setVotes([]); });
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const tally = tallyVotes(votes || []);
+  const mine = (votes || []).find(v => v.voter === voter);
+  const castVote = async methodId => {
+    setErr("");
+    try { await db.setColorVote(voter, methodId, scope); await load(); }
+    catch { setErr("Vote failed — check the color_votes table exists"); }
+  };
+  return (
+    <div style={{ borderTop: `1px dashed ${T.border}`, paddingTop: 8 }}>
+      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.15em", marginBottom: 6 }}>
+        🗳️ VOTE — which method looks best? (saved with your current switches)
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {COLOR_METHODS.map(m => {
+          const on = mine && mine.method === m.id;
+          return (
+            <button key={m.id} onClick={() => castVote(m.id)} title={m.description} style={{ padding: "4px 10px", borderRadius: 999, cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.05em", background: on ? "#C8102E" : T.bgCard, color: on ? "#fff" : T.textMuted, border: `1.5px solid ${on ? "#C8102E" : T.border}` }}>
+              {on ? "★ " : ""}{m.label} <span style={{ opacity: 0.7 }}>({tally[m.id] || 0})</span>
+            </button>
+          );
+        })}
+      </div>
+      {err && <div style={{ fontSize: 10, color: "#C8102E", marginTop: 6, fontFamily: "'Oswald',sans-serif" }}>{err}</div>}
     </div>
   );
 }
@@ -1700,7 +1745,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
 
 function LoginModal({ T, onLogin, onClose }) {
   const [pw, setPw] = useState(""); const [err, setErr] = useState("");
-  const go = () => { if (checkPw(pw)) onLogin(); else setErr("Incorrect password. Please try again."); };
+  const go = () => { const role = checkPw(pw); if (role) onLogin(role); else setErr("Incorrect password. Please try again."); };
   return (
     <ModalShell onClose={onClose} T={T}>
       <div style={{ textAlign: "center" }}>
@@ -2984,8 +3029,8 @@ function LoadingSpinner({ T }) {
 
 // ─── COLLECTION PAGE ──────────────────────────────────────────────────────────
 
-function CollectionPage({ T, L, isAdmin }) {
-  const colorPrefs = useColorSortPrefs(isAdmin);
+function CollectionPage({ T, L, isAdmin, canAdvanced = false }) {
+  const colorPrefs = useColorSortPrefs(canAdvanced);
   const [cans, setCans] = useState([]);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -3084,7 +3129,7 @@ function CollectionPage({ T, L, isAdmin }) {
     return { pinnedCans, allFiltered: [...pinnedCans, ...filtered] };
   }, [cans, search, activeTags, activeCountry, pinned, sort, tagRoles, colorPrefs.opts]);
 
-  const colorUi = isAdmin && sort === "color" ? {
+  const colorUi = canAdvanced && sort === "color" ? {
     methodId: colorPrefs.methodId, setMethodId: colorPrefs.setMethodId,
     scope: colorPrefs.scope, setScope: colorPrefs.setScope,
     notComputed: cans.filter(c => !c.colorMethods).length, total: cans.length,
@@ -4120,7 +4165,7 @@ function MigrateBlobTool({ T, cans, wishes, wallPhotos, onDone, onSaveCan, onSav
 
 // ─── STATS PAGE ───────────────────────────────────────────────────────────────
 
-function StatsPage({ T, L, isAdmin }) {
+function StatsPage({ T, L, isAdmin, canAdvanced = false }) {
   const [cans, setCans] = useState([]);
   const [wishes, setWishes] = useState([]);
   const [wallPhotos, setWallPhotos] = useState([]);
@@ -4287,19 +4332,19 @@ function StatsPage({ T, L, isAdmin }) {
       })()}
 
       {/* Export — admin only */}
-      {isAdmin && <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+      {canAdvanced && <div style={{ paddingTop: 16, borderTop: `2px dashed ${T.border}`, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
         <button onClick={exportJSON} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "12px 28px", color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 13, letterSpacing: "0.15em", cursor: "pointer" }}>
           {L.exportBtn}
         </button>
         <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Downloads a JSON file with your full collection + wishlist</p>
 
-        <button onClick={() => {
+        {isAdmin &&         <button onClick={() => {
           const url = new URL(window.location.href);
           url.searchParams.set("debug", "1");
           window.location.href = url.toString();
         }} style={{ background: T.bgCard, border: `2px solid ${T.border}`, borderRadius: 12, padding: "12px 28px", color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 13, letterSpacing: "0.15em", cursor: "pointer" }}>
           {L.debugBtn}
-        </button>
+        </button>}
         <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Shows service worker / cache diagnostics overlay</p>
 
         {/* Migration tool */}
@@ -4843,6 +4888,8 @@ function ShortcutsHelpModal({ T, isAdmin, onClose }) {
 export default function App() {
   const [cz, setCz] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("cv_admin") === "1");
+  const [isTester, setIsTester] = useState(() => localStorage.getItem("cv_tester") === "1");
+  const canAdvanced = isAdmin || isTester; // advanced stats, colour sort switches, voting (no write actions)
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -5097,8 +5144,8 @@ export default function App() {
               <OfflineSettings cz={cz} />
             </div>
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 4, paddingTop: 12 }}>
-              {isAdmin
-                ? <button onClick={() => { setIsAdmin(false); localStorage.removeItem("cv_admin"); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signOut.toUpperCase()}</button>
+              {canAdvanced
+                ? <button onClick={() => { setIsAdmin(false); setIsTester(false); localStorage.removeItem("cv_admin"); localStorage.removeItem("cv_tester"); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signOut.toUpperCase()}</button>
                 : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signIn}</button>
               }
             </div>
@@ -5127,11 +5174,11 @@ export default function App() {
           monitors, instead of being capped at the same 1100px reading width as Stats/Wall. */}
       <main style={{ maxWidth: (location.pathname === "/" || location.pathname === "/wishlist") ? "none" : 1100, margin: "0 auto", padding: "20px 14px" }}>
         <Routes>
-          <Route path="/" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
+          <Route path="/" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} canAdvanced={canAdvanced} />} />
           <Route path="/wishlist" element={<WishlistPage T={T} L={L} isAdmin={isAdmin} />} />
           <Route path="/canwall" element={<CanWallPage T={T} L={L} isAdmin={isAdmin} />} />
-          <Route path="/stats" element={<StatsPage T={T} L={L} isAdmin={isAdmin} />} />
-          <Route path="*" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} />} />
+          <Route path="/stats" element={<StatsPage T={T} L={L} isAdmin={isAdmin} canAdvanced={canAdvanced} />} />
+          <Route path="*" element={<CollectionPage T={T} L={L} isAdmin={isAdmin} canAdvanced={canAdvanced} />} />
         </Routes>
       </main>
 
@@ -5142,7 +5189,7 @@ export default function App() {
         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.15em", marginTop: 4 }}>v{APP_VERSION}</p>
       </div>
 
-      {showLogin && <LoginModal T={T} L={L} onLogin={() => { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
+      {showLogin && <LoginModal T={T} L={L} onLogin={role => { if (role === "admin") { setIsAdmin(true); localStorage.setItem("cv_admin", "1"); } else { setIsTester(true); localStorage.setItem("cv_tester", "1"); } setShowLogin(false); }} onClose={() => setShowLogin(false)} />}
       {showTutorial && <TutorialOverlay steps={tutorialSteps} onClose={closeTutorial} T={T} />}
       {showShortcuts && <ShortcutsHelpModal T={T} isAdmin={isAdmin} onClose={() => setShowShortcuts(false)} />}
       <OfflineBadge cz={cz} />
