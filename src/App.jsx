@@ -5,6 +5,7 @@ import * as db from "./db.js";
 import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 import { APP_VERSION } from "./version.js";
+import { compareColorHex } from "./colorSort.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
 
@@ -1300,42 +1301,6 @@ function getSizeMl(can, tagRoles) {
   const sizeTag = (can.tags || []).find(t => tagRoles[t] === "size");
   return sizeTag ? parseSizeMl(sizeTag) : null;
 }
-// Convert "#rrggbb" to [h, s, l] (h in 0-360, s/l in 0-100). Returns null for
-// invalid input, so callers can push colorless cans to the end of a sort.
-function hexToHsl(hex) {
-  if (!hex || typeof hex !== "string") return null;
-  const m = hex.replace("#", "").match(/^([0-9a-f]{6})$/i);
-  if (!m) return null;
-  const r = parseInt(m[1].slice(0, 2), 16) / 255;
-  const g = parseInt(m[1].slice(2, 4), 16) / 255;
-  const b = parseInt(m[1].slice(4, 6), 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  let h = 0, s = 0;
-  const d = max - min;
-  if (d !== 0) {
-    s = d / (1 - Math.abs(2 * l - 1));
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-    if (h < 0) h += 360;
-  }
-  return [h, s * 100, l * 100];
-}
-// Sort key for "by color": group into hue buckets (so reds stay with reds,
-// blues with blues, etc.) then order by lightness within a bucket. Grayscale
-// cans (very low saturation) are bucketed separately and ordered black→white
-// so they don't scatter randomly between hue groups (hue is meaningless at s≈0).
-function colorSortKey(hex) {
-  const hsl = hexToHsl(hex);
-  if (!hsl) return null;
-  const [h, s, l] = hsl;
-  if (s < 12) return [1, 0, l]; // grayscale bucket, after all hued colors
-  // Rotate the hue wheel so the spectrum starts at crimson/pink-red (~330°)
-  // instead of exactly 0° — otherwise reds with hue 330-360 land at the very end.
-  return [0, (h + 30) % 360, l];
-}
 function sortCans(cans, sort, tagRoles = {}) {
   return [...cans].sort((a, b) => {
     if (sort === "newest") return b.addedAt - a.addedAt;
@@ -1357,10 +1322,8 @@ function sortCans(cans, sort, tagRoles = {}) {
       return sb - sa || a.name.localeCompare(b.name);
     }
     if (sort === "color") {
-      const ka = colorSortKey(a.avgColor), kb = colorSortKey(b.avgColor);
-      if (!ka && !kb) return a.name.localeCompare(b.name);
-      if (!ka) return 1; if (!kb) return -1; // colorless cans sort last
-      return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2] || a.name.localeCompare(b.name);
+      // colorless cans sort last (handled inside compareColorHex)
+      return compareColorHex(a.avgColor, b.avgColor) || a.name.localeCompare(b.name);
     }
     if (sort === "countries") return (b.countries || []).length - (a.countries || []).length;
     return 0;
