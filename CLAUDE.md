@@ -1995,3 +1995,15 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **How:** `src/colorSort.js` gets `colorSortKeyWith` / `compareColorHexWith` (a scope object) and `colorValueOf`. The default scope reproduces the old ordering exactly (tested). `src/App.jsx`: `computeAllColorMethods`, `useColorSortPrefs`, `ColorSortControls`, `sortCans(…, colorOpts)`. `src/db.js`: `upsertCan` writes `color_methods` and retries without it if the column is missing; `rowToCan` maps it.
 
 **Files touched:** `src/colorSort.js`, `src/colorSort.test.js` (36 tests total with `npm test`), `src/App.jsx`, `src/db.js`, `supabase/migration_color_methods.sql` (new), `src/version.js`.
+
+## 2026-10-17 — v1.7.0: tester sign-in and colour voting
+
+**What:** A second sign-in, "tester", separate from the admin password. Testers can see the advanced Stats section (JSON export), the colour sort switches on the Collection page, and a voting panel. They cannot upload, edit, bulk-edit, delete, pin-manage or run Recompute Colors. The Stats debug screen button stays admin-only. The voting panel sits under the switches and lets any signed-in viewer pick the best colour method. One vote per browser (`cv_voter_id`), changeable; each vote records the switch settings in use, so combinations can be compared.
+
+**How:** `checkPw` returns `"admin"` / `"tester"` / `null`. App state `isTester` (`cv_tester` flag) and `canAdvanced = isAdmin || isTester`. `CollectionPage` and `StatsPage` take `canAdvanced`; write actions still use `isAdmin`. Sign-out clears both flags. `ColorVotePanel` uses `db.getColorVotes` / `db.setColorVote` (table `color_votes`, one row per voter). `tallyVotes` in `colorMethods.js` (tested).
+
+**Required once:** run `supabase/migration_color_votes.sql`. Until then the panel shows an error and votes don't save.
+
+**Limits:** Gating is client-side. The tester and admin passwords are in the bundle, and the Supabase anon key allows writes, so a determined person could bypass the UI. Real enforcement needs RLS policies and server-side checks.
+
+**Files touched:** `src/App.jsx`, `src/db.js`, `src/colorMethods.js`, `src/colorMethods.test.js` (37 tests with `npm test`), `supabase/migration_color_votes.sql` (new), `src/version.js`.
