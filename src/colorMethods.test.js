@@ -131,3 +131,13 @@ test("tallyConfigs groups identical configs and sorts best first", () => {
   assert.equal(t.reduce((n, e) => n + e.count, 0), 4);
   assert.deepEqual(normalizeScope(null), DEFAULT_SORT_SCOPE);
 });
+
+import { startHueOf, hueStartFromStartHue } from "./colorSort.js";
+test("start hue converts both ways and labels show exact degrees", () => {
+  assert.equal(startHueOf(0), 0);
+  assert.equal(startHueOf(30), 330);            // crimson start
+  assert.equal(hueStartFromStartHue(42), 318);
+  assert.equal(startHueOf(hueStartFromStartHue(42)), 42);
+  assert.equal(configLabel("median", { hueStart: 318 }), "Median · start 42° · normal greys");
+  assert.equal(configLabel("median", { hueStart: 60 }), "Median · magenta · normal greys"); // start 300° = magenta
+});
