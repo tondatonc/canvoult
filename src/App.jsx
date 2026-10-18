@@ -5234,6 +5234,10 @@ export default function App() {
               <OfflineSettings cz={cz} />
             </div>
             <div style={{ borderTop: "1px solid #FFD0C022", marginTop: 4, paddingTop: 12 }}>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: "#FFD0C0", letterSpacing: "0.08em", margin: "0 0 10px", opacity: 0.9 }}>
+                {cz ? "PŘIHLÁŠEN JAKO: " : "SIGNED IN AS: "}
+                <b style={{ color: "#FFF5E6" }}>{isAdmin ? (cz ? "VÝVOJÁŘ" : "DEV") : isTester ? (cz ? "TESTER" : "TESTER") : (cz ? "HOST" : "GUEST")}</b>
+              </p>
               {canAdvanced
                 ? <button onClick={() => { setIsAdmin(false); setIsTester(false); localStorage.removeItem("cv_admin"); localStorage.removeItem("cv_tester"); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "transparent", border: "2px solid #FFD0C055", borderRadius: 11, color: "#FFD0C0", fontFamily: "'Oswald',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signOut.toUpperCase()}</button>
                 : <button onClick={() => { setShowLogin(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px", background: "#FFF5E6", border: "2px solid #FFE8D0", borderRadius: 11, color: "#C8102E", fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.1em" }}>{L.signIn}</button>
