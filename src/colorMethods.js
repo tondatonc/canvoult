@@ -1,7 +1,7 @@
 // Selectable methods for computing a can's representative ("avgColor") color.
 // Pure functions only (no DOM), so they can be unit tested with `node --test`.
 
-import { DEFAULT_SORT_SCOPE } from "./colorSort.js";
+import { DEFAULT_SORT_SCOPE, START_HUE_PRESETS, startHueOf } from "./colorSort.js";
 //
 // The default method "current" reproduces the algorithm in use since v1.2.
 // Other methods exist so an admin can compare them on real photos and pick
@@ -174,10 +174,15 @@ export function tallyVotes(rows) {
 }
 
 // ─── Configs: a colour method plus the sort switches, as one votable thing ───
-const HUE_LABEL = { 0: "red", 30: "crimson", 60: "magenta" };
 const GREY_LABEL = { 5: "strict", 12: "normal", 25: "loose" };
 const WITHIN_LABEL = { "light-asc": "dark→light", "light-desc": "light→dark", "sat-desc": "vivid first", "sat-asc": "muted first" };
 const GREY_ORDER_LABEL = { asc: "black→white", desc: "white→black" };
+
+function hueStartLabel(hueStart) {
+  const h = startHueOf(hueStart);
+  const preset = START_HUE_PRESETS.find(p => p.startHue === h);
+  return preset ? preset.name : `start ${h}°`;
+}
 
 // Fill in any missing switch with its default (old votes may store partial scopes).
 export function normalizeScope(scope) {
@@ -195,7 +200,7 @@ export function configLabel(methodId, scope) {
   const s = normalizeScope(scope);
   const parts = [
     getColorMethod(methodId).label,
-    HUE_LABEL[s.hueStart] || `${s.hueStart}°`,
+    hueStartLabel(s.hueStart),
     `${GREY_LABEL[s.greyThreshold] || `s<${s.greyThreshold}`} greys`,
   ];
   if (s.within !== DEFAULT_SORT_SCOPE.within) parts.push(WITHIN_LABEL[s.within] || s.within);
