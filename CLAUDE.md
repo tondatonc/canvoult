@@ -2049,3 +2049,11 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **How:** Pure display in the `mob-menu` block of `App.jsx`, using the existing `isAdmin`, `isTester` and `cz` values.
 
 **Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-10-18 — v1.8.3: testers are read-only
+
+**Bug:** The Stats page's advanced section (opened to testers in v1.7.0) also contained the migration tool, orphan-photo cleanup and bad-crop audit, which write to the database and delete stored photos. Testers could reach them.
+
+**Fix:** those three tools now render only when `isAdmin` is set. The export and advanced stats remain visible to testers and admins. The other edit, crop, copy, remove, pin and bulk actions were already admin-only and were checked again.
+
+**Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
