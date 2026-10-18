@@ -2023,3 +2023,13 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **How:** `_TT` holds the base64 token, `checkTesterToken` compares it, and a mount effect in `App` reads and clears the parameter.
 
 **Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-10-17 — v1.8.0: exact start hue and floating colour settings
+
+**What:** The start hue is now any degree 0–359°, set with a slider, a number box, or named presets (red, orange, yellow, green, blue, purple, magenta, crimson). A preview bar shows the colours in sort order from the chosen start. The colour switches moved into a floating "🎨 Colour settings" panel (bottom-right, opened from the Collection page) so they can be changed while scrolling. Labels show the start as a name when it's a preset, otherwise as "start N°".
+
+**Compatibility:** the stored `hueStart` is still the rotation, so existing votes keep their meaning. The UI shows the start hue as `(360 − hueStart) mod 360`. Old votes relabel automatically (e.g. `hueStart` 30 → crimson, 60 → magenta, 0 → red).
+
+**How:** `colorSort.js` gains `startHueOf`, `hueStartFromStartHue`, `START_HUE_PRESETS`. `colorMethods.js` labels use the start hue. `App.jsx` gains `StartHuePicker` and the floating panel in `CollectionPage`.
+
+**Files touched:** `src/App.jsx`, `src/colorSort.js`, `src/colorMethods.js`, `src/colorMethods.test.js` (41 tests with `npm test`), `src/version.js`, `CLAUDE.md`.
