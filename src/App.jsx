@@ -6,7 +6,7 @@ import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, get
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 import { APP_VERSION } from "./version.js";
 import { compareColorHexWith, colorValueOf, DEFAULT_SORT_SCOPE } from "./colorSort.js";
-import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId, tallyVotes } from "./colorMethods.js";
+import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId, tallyConfigs, configKey, configLabel } from "./colorMethods.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
 
@@ -1274,7 +1274,7 @@ function ColorSortControls({ T, controls }) {
           ⚠ {notComputed} of {total} cans have no per-method colours yet — an admin needs to run 🎨 Recompute Colors.
         </div>
       )}
-      <ColorVotePanel T={T} scope={scope} />
+      <ColorVotePanel T={T} methodId={methodId} scope={scope} setMethodId={setMethodId} setScope={setScope} />
     </div>
   );
 }
@@ -1289,35 +1289,60 @@ function getVoterId() {
   }
   return id;
 }
-function ColorVotePanel({ T, scope }) {
+function ColorVotePanel({ T, methodId, scope, setMethodId, setScope }) {
   const [votes, setVotes] = useState(null);
   const [err, setErr] = useState("");
   const voter = useMemo(getVoterId, []);
-  const load = () => db.getColorVotes().then(rows => setVotes(rows || [])).catch(() => { setErr("Could not load votes — run supabase/migration_color_votes.sql"); setVotes([]); });
+  const load = () => db.getColorVotes()
+    .then(rows => setVotes(rows || []))
+    .catch(() => { setErr("Could not load votes — run supabase/migration_color_votes.sql"); setVotes([]); });
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const tally = tallyVotes(votes || []);
-  const mine = (votes || []).find(v => v.voter === voter);
-  const castVote = async methodId => {
+
+  const rows = votes || [];
+  const ranking = useMemo(() => tallyConfigs(rows), [rows.length, votes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mine = rows.find(v => v.voter === voter);
+  const myKey = mine ? configKey(mine.method, mine.scope) : null;
+  const currentKey = configKey(methodId, scope);
+  const maxCount = ranking.length ? ranking[0].count : 1;
+
+  const castVote = async () => {
     setErr("");
     try { await db.setColorVote(voter, methodId, scope); await load(); }
     catch { setErr("Vote failed — check the color_votes table exists"); }
   };
+  const loadConfig = entry => { setMethodId(entry.method); setScope(entry.scope); };
+
+  const panelLabel = { fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.15em", marginBottom: 6 };
   return (
-    <div style={{ borderTop: `1px dashed ${T.border}`, paddingTop: 8 }}>
-      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.15em", marginBottom: 6 }}>
-        🗳️ VOTE — which method looks best? (saved with your current switches)
+    <div style={{ borderTop: `1px dashed ${T.border}`, paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={panelLabel}>🗳️ VOTE FOR A CONFIG — the switches above are what you vote for</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: T.text, fontFamily: "Georgia,serif", flex: "1 1 220px" }}>{configLabel(methodId, scope)}</span>
+        <button onClick={castVote} disabled={myKey === currentKey} style={{ padding: "6px 12px", borderRadius: 999, cursor: myKey === currentKey ? "default" : "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", background: myKey === currentKey ? "#C8102E" : T.bgCard, color: myKey === currentKey ? "#fff" : "#C8102E", border: "1.5px solid #C8102E" }}>
+          {myKey === currentKey ? "★ YOUR VOTE" : "VOTE FOR THIS CONFIG"}
+        </button>
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {COLOR_METHODS.map(m => {
-          const on = mine && mine.method === m.id;
-          return (
-            <button key={m.id} onClick={() => castVote(m.id)} title={m.description} style={{ padding: "4px 10px", borderRadius: 999, cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 10, letterSpacing: "0.05em", background: on ? "#C8102E" : T.bgCard, color: on ? "#fff" : T.textMuted, border: `1.5px solid ${on ? "#C8102E" : T.border}` }}>
-              {on ? "★ " : ""}{m.label} <span style={{ opacity: 0.7 }}>({tally[m.id] || 0})</span>
-            </button>
-          );
-        })}
-      </div>
-      {err && <div style={{ fontSize: 10, color: "#C8102E", marginTop: 6, fontFamily: "'Oswald',sans-serif" }}>{err}</div>}
+
+      {votes === null && <div style={{ fontSize: 10, color: T.textFaint }}>Loading votes…</div>}
+      {votes !== null && ranking.length === 0 && <div style={{ fontSize: 10, color: T.textFaint, fontFamily: "Georgia,serif" }}>No votes yet — be the first.</div>}
+      {ranking.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ ...panelLabel, marginBottom: 2 }}>RANKING · {rows.length} VOTE{rows.length === 1 ? "" : "S"} · TAP TO LOAD A CONFIG</div>
+          {ranking.slice(0, 10).map((e, idx) => {
+            const isMine = e.key === myKey;
+            return (
+              <button key={e.key} onClick={() => loadConfig(e)} title="Load this config into the switches" style={{ position: "relative", overflow: "hidden", textAlign: "left", padding: "6px 10px", borderRadius: 8, cursor: "pointer", background: T.bgCard, border: `1.5px solid ${isMine ? "#C8102E" : T.border}`, color: T.text, fontFamily: "Georgia,serif", fontSize: 11 }}>
+                <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${(e.count / maxCount) * 100}%`, background: isMine ? "#C8102E33" : `${T.border}66` }} />
+                <span style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span>{idx + 1}. {isMine ? "★ " : ""}{e.label}</span>
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, color: "#C8102E" }}>{e.count}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {err && <div style={{ fontSize: 10, color: "#C8102E", fontFamily: "'Oswald',sans-serif" }}>{err}</div>}
     </div>
   );
 }
