@@ -13,6 +13,8 @@ import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColor
 
 const _PH = "c29kYWNhbjEyMw==";
 const _TP = "dGVzdGVyLWNhbnZhdWx0"; // tester (read-only + voting) password
+const _TT = "aW5rV0ZEU01TRGxISjY5YjBvcXVvalBD"; // share-link token: ?tester=<token> signs the viewer in as a tester
+function checkTesterToken(token) { try { return atob(_TT) === token; } catch { return false; } }
 function checkPw(pw) { try { if (atob(_PH) === pw) return "admin"; if (atob(_TP) === pw) return "tester"; } catch { /* fall through */ } return null; }
 
 // Human-readable byte size for the offline backup indicator. null/undefined
@@ -4915,6 +4917,16 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("cv_admin") === "1");
   const [isTester, setIsTester] = useState(() => localStorage.getItem("cv_tester") === "1");
   const canAdvanced = isAdmin || isTester; // advanced stats, colour sort switches, voting (no write actions)
+
+  // Share link: ?tester=<token> signs the viewer in as a tester, then removes the token from the address bar.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get("tester");
+    if (token === null) return;
+    url.searchParams.delete("tester");
+    window.history.replaceState(window.history.state, "", url.toString());
+    if (checkTesterToken(token)) { setIsTester(true); localStorage.setItem("cv_tester", "1"); }
+  }, []);
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
