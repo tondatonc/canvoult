@@ -2007,3 +2007,11 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **Limits:** Gating is client-side. The tester and admin passwords are in the bundle, and the Supabase anon key allows writes, so a determined person could bypass the UI. Real enforcement needs RLS policies and server-side checks.
 
 **Files touched:** `src/App.jsx`, `src/db.js`, `src/colorMethods.js`, `src/colorMethods.test.js` (37 tests with `npm test`), `supabase/migration_color_votes.sql` (new), `src/version.js`.
+
+## 2026-10-17 — v1.7.1: voting on exact configs
+
+**What:** Votes are now for a *config* — a colour method plus the sort switches (start hue, grey sensitivity, within-hue order, grey order) — e.g. "Median · red · normal greys". The vote panel shows the current config, a "Vote for this config" button, and a ranking of all configs voted on (best first, bar + count, your vote starred). Tapping a ranked config loads it into the switches so you can see the collection sorted that way. Same-config votes group together regardless of how the votes were recorded.
+
+**How:** `src/colorMethods.js`: `normalizeScope`, `configKey`, `configLabel`, `tallyConfigs`. `ColorVotePanel` in `App.jsx` takes `methodId`/`scope`/setters. No schema change: votes already stored method + scope.
+
+**Files touched:** `src/colorMethods.js`, `src/colorMethods.test.js` (40 tests with `npm test`), `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
