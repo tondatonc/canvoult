@@ -5,7 +5,7 @@ import * as db from "./db.js";
 import { isOfflineEnabled, setOfflineEnabled, setupOffline, teardownOffline, getStorageUsage } from "./offlineDb.js";
 import { resolveCountry, flagUrl, COUNTRY_LIST, ALL_COUNTRIES } from "./countries.js";
 import { APP_VERSION } from "./version.js";
-import { compareColorHexWith, colorValueOf, DEFAULT_SORT_SCOPE } from "./colorSort.js";
+import { compareColorHexWith, colorValueOf, DEFAULT_SORT_SCOPE, START_HUE_PRESETS, startHueOf, hueStartFromStartHue } from "./colorSort.js";
 import { COLOR_METHODS, computeColorFromPixels, getActiveColorMethodId, getColorMethod, setActiveColorMethodId, tallyConfigs, configKey, configLabel } from "./colorMethods.js";
 
 // ─── COUNTRY CODE LOOKUP ──────────────────────────────────────────────────────
@@ -1240,6 +1240,37 @@ function useColorSortPrefs(isAdmin) {
 }
 
 // Admin switches shown above the sort bar when sorting by colour.
+// Exact start hue (0-359°) with slider, number box, a preview of the spectrum order, and presets.
+function StartHuePicker({ T, scope, setScope }) {
+  const startHue = startHueOf(scope.hueStart);
+  const set = h => {
+    const v = Math.max(0, Math.min(359, Math.round(h)));
+    setScope({ hueStart: hueStartFromStartHue(v) });
+  };
+  const preview = `linear-gradient(to right, ${Array.from({ length: 13 }, (_, i) => `hsl(${(startHue + i * 30) % 360} 100% 50%)`).join(", ")})`;
+  const label = { fontFamily: "'Oswald',sans-serif", fontSize: 9, color: T.textFaint, letterSpacing: "0.15em", minWidth: 70 };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={label}>START HUE</span>
+        <input type="number" min={0} max={359} value={startHue} onChange={e => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) set(v); }}
+          style={{ width: 70, padding: "4px 6px", background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 6, color: T.text, fontFamily: "'Oswald',sans-serif", fontSize: 12 }} />
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, color: T.textMuted }}>°</span>
+      </div>
+      <input type="range" min={0} max={359} value={startHue} onChange={e => set(parseInt(e.target.value, 10))} style={{ width: "100%", accentColor: "#C8102E" }} />
+      <div title="Colours in the order they sort, starting at the chosen hue" style={{ height: 8, borderRadius: 4, background: preview, border: `1px solid ${T.border}` }} />
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {START_HUE_PRESETS.map(p => {
+          const on = p.startHue === startHue;
+          return (
+            <button key={p.name} onClick={() => set(p.startHue)} style={{ padding: "2px 8px", borderRadius: 999, cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 9, letterSpacing: "0.05em", background: on ? "#C8102E" : T.bgCard, color: on ? "#fff" : T.textMuted, border: `1.5px solid ${on ? "#C8102E" : T.border}` }}>{p.name}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ColorSortControls({ T, controls }) {
   const { methodId, setMethodId, scope, setScope, notComputed, total } = controls;
   const idx = Math.max(0, COLOR_METHODS.findIndex(m => m.id === methodId));
@@ -1253,7 +1284,6 @@ function ColorSortControls({ T, controls }) {
       {options.map(o => chip(o.v === value, o.l, () => onPick(o.v), String(o.v)))}
     </div>
   );
-  const HUE = [{ v: 0, l: "red" }, { v: 30, l: "crimson" }, { v: 60, l: "magenta" }];
   const GREY = [{ v: 5, l: "strict" }, { v: 12, l: "normal" }, { v: 25, l: "loose" }];
   const WITHIN = [{ v: "light-asc", l: "dark→light" }, { v: "light-desc", l: "light→dark" }, { v: "sat-desc", l: "vivid first" }, { v: "sat-asc", l: "muted first" }];
   const GREY_ORDER = [{ v: "asc", l: "black→white" }, { v: "desc", l: "white→black" }];
@@ -1267,7 +1297,7 @@ function ColorSortControls({ T, controls }) {
         <span style={{ width: 8 }} />
         {COLOR_METHODS.map(m => chip(m.id === methodId, m.label, () => setMethodId(m.id), m.id))}
       </div>
-      {group("START", HUE, scope.hueStart, v => setScope({ hueStart: v }))}
+      <StartHuePicker T={T} scope={scope} setScope={setScope} />
       {group("GREYS", GREY, scope.greyThreshold, v => setScope({ greyThreshold: v }))}
       {group("WITHIN", WITHIN, scope.within, v => setScope({ within: v }))}
       {group("GREY ORDER", GREY_ORDER, scope.greyOrder, v => setScope({ greyOrder: v }))}
@@ -3058,6 +3088,7 @@ function LoadingSpinner({ T }) {
 
 function CollectionPage({ T, L, isAdmin, canAdvanced = false }) {
   const colorPrefs = useColorSortPrefs(canAdvanced);
+  const [colorPanelOpen, setColorPanelOpen] = useState(false);
   const [cans, setCans] = useState([]);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -3295,7 +3326,22 @@ function CollectionPage({ T, L, isAdmin, canAdvanced = false }) {
 
       {/* ── Sort + view ── */}
       <div data-tut="sort-bar">
-        {colorUi && <ColorSortControls T={T} controls={colorUi} />}
+        {colorUi && (
+          <>
+            <button onClick={() => setColorPanelOpen(o => !o)} style={{ position: "fixed", right: 16, bottom: 16, zIndex: 900, padding: "10px 16px", borderRadius: 999, background: "#C8102E", color: "#fff", border: "none", cursor: "pointer", fontFamily: "'Oswald',sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", boxShadow: "0 6px 20px #C8102E55" }}>
+              🎨 {colorPanelOpen ? "HIDE COLOUR" : "COLOUR SETTINGS"}
+            </button>
+            {colorPanelOpen && (
+              <div style={{ position: "fixed", right: 16, bottom: 70, width: "min(380px, calc(100vw - 32px))", maxHeight: "70vh", overflowY: "auto", zIndex: 899, background: T.bg, border: `2px solid ${T.border}`, borderRadius: 14, boxShadow: "0 12px 40px #00000066", padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.15em", color: "#C8102E" }}>COLOUR SORT</span>
+                  <button onClick={() => setColorPanelOpen(false)} aria-label="Close" style={{ background: "none", border: "none", color: T.textMuted, fontSize: 18, cursor: "pointer", lineHeight: 1 }}>×</button>
+                </div>
+                <ColorSortControls T={T} controls={colorUi} />
+              </div>
+            )}
+          </>
+        )}
         <SortBar sort={sort} setSort={setSort} viewMode={viewMode} setViewMode={setViewMode} T={T} L={L} />
       </div>
       </div>
