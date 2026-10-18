@@ -99,3 +99,35 @@ test("tallyVotes counts per method and ignores unknown methods", () => {
   assert.equal(t.current, 0);
   assert.equal(t.nope, undefined);
 });
+
+import { configKey, configLabel, tallyConfigs, normalizeScope } from "./colorMethods.js";
+import { DEFAULT_SORT_SCOPE } from "./colorSort.js";
+
+test("configKey treats a partial scope the same as the explicit default", () => {
+  assert.equal(configKey("median", null), configKey("median", DEFAULT_SORT_SCOPE));
+  assert.equal(configKey("median", { hueStart: 30 }), configKey("median", DEFAULT_SORT_SCOPE));
+  assert.notEqual(configKey("median", null), configKey("mean", null));
+  assert.notEqual(configKey("median", null), configKey("median", { greyThreshold: 25 }));
+});
+
+test("configLabel reads like the names testers use", () => {
+  assert.equal(configLabel("median", { hueStart: 0, greyThreshold: 12 }), "Median · red · normal greys");
+  assert.equal(configLabel("histogram", null).startsWith("Current"), true);
+  assert.equal(configLabel("fine", { hueStart: 30, greyThreshold: 25, within: "sat-desc" }), "Fine histogram · crimson · loose greys · vivid first");
+});
+
+test("tallyConfigs groups identical configs and sorts best first", () => {
+  const rows = [
+    { method: "median", scope: { hueStart: 0, greyThreshold: 12 } },
+    { method: "median", scope: { hueStart: 0, greyThreshold: 12 } },
+    { method: "median", scope: null },            // same as default — different from red start
+    { method: "coarse", scope: { greyThreshold: 25 } },
+    { method: "bogus", scope: null },              // ignored
+  ];
+  const t = tallyConfigs(rows);
+  assert.equal(t[0].label, "Median · red · normal greys");
+  assert.equal(t[0].count, 2);
+  assert.equal(t.length, 3);
+  assert.equal(t.reduce((n, e) => n + e.count, 0), 4);
+  assert.deepEqual(normalizeScope(null), DEFAULT_SORT_SCOPE);
+});
