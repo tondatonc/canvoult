@@ -2033,3 +2033,11 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **How:** `colorSort.js` gains `startHueOf`, `hueStartFromStartHue`, `START_HUE_PRESETS`. `colorMethods.js` labels use the start hue. `App.jsx` gains `StartHuePicker` and the floating panel in `CollectionPage`.
 
 **Files touched:** `src/App.jsx`, `src/colorSort.js`, `src/colorMethods.js`, `src/colorMethods.test.js` (41 tests with `npm test`), `src/version.js`, `CLAUDE.md`.
+
+## 2026-10-17 — v1.8.1: share link sign-in fix
+
+**Bug:** `?tester=` was read in a top-level `useEffect`, but `CollectionPage` runs an effect that rewrites the URL query from its own filter state. Child effects run first, so the token was stripped before the sign-in check.
+
+**Fix:** the token is read in the `useState` initializer for `isTester`, during the first render, before any effects. The effect now only removes the parameter from the address bar.
+
+**Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
