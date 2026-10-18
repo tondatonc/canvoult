@@ -4961,17 +4961,24 @@ function ShortcutsHelpModal({ T, isAdmin, onClose }) {
 export default function App() {
   const [cz, setCz] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("cv_admin") === "1");
-  const [isTester, setIsTester] = useState(() => localStorage.getItem("cv_tester") === "1");
+  // Read the share-link token during the first render. Child effects (e.g. the Collection
+  // page rewriting its filter params in the URL) run before this component's effects and
+  // would otherwise strip ?tester= first.
+  const [isTester, setIsTester] = useState(() => {
+    if (localStorage.getItem("cv_tester") === "1") return true;
+    const token = new URL(window.location.href).searchParams.get("tester");
+    if (token !== null && checkTesterToken(token)) { localStorage.setItem("cv_tester", "1"); return true; }
+    return false;
+  });
   const canAdvanced = isAdmin || isTester; // advanced stats, colour sort switches, voting (no write actions)
 
-  // Share link: ?tester=<token> signs the viewer in as a tester, then removes the token from the address bar.
+  // Share link: the sign-in happens in the useState above; here the token is removed from the address bar.
   useEffect(() => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get("tester");
     if (token === null) return;
     url.searchParams.delete("tester");
     window.history.replaceState(window.history.state, "", url.toString());
-    if (checkTesterToken(token)) { setIsTester(true); localStorage.setItem("cv_tester", "1"); }
   }, []);
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
