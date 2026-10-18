@@ -2041,3 +2041,11 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **Fix:** the token is read in the `useState` initializer for `isTester`, during the first render, before any effects. The effect now only removes the parameter from the address bar.
 
 **Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-10-18 — v1.8.2: signed-in role in burger menu
+
+**What:** The ☰ menu now shows a "Signed in as" line above the sign-in/sign-out button: DEV (admin password), TESTER (tester password or share link), or GUEST (not signed in). Czech labels: VÝVOJÁŘ / TESTER / HOST.
+
+**How:** Pure display in the `mob-menu` block of `App.jsx`, using the existing `isAdmin`, `isTester` and `cz` values.
+
+**Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
