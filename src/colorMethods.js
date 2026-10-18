@@ -1,5 +1,7 @@
 // Selectable methods for computing a can's representative ("avgColor") color.
 // Pure functions only (no DOM), so they can be unit tested with `node --test`.
+
+import { DEFAULT_SORT_SCOPE } from "./colorSort.js";
 //
 // The default method "current" reproduces the algorithm in use since v1.2.
 // Other methods exist so an admin can compare them on real photos and pick
@@ -169,4 +171,51 @@ export function tallyVotes(rows) {
   const tally = Object.fromEntries(COLOR_METHODS.map(m => [m.id, 0]));
   for (const r of rows) if (r && tally[r.method] !== undefined) tally[r.method]++;
   return tally;
+}
+
+// ─── Configs: a colour method plus the sort switches, as one votable thing ───
+const HUE_LABEL = { 0: "red", 30: "crimson", 60: "magenta" };
+const GREY_LABEL = { 5: "strict", 12: "normal", 25: "loose" };
+const WITHIN_LABEL = { "light-asc": "dark→light", "light-desc": "light→dark", "sat-desc": "vivid first", "sat-asc": "muted first" };
+const GREY_ORDER_LABEL = { asc: "black→white", desc: "white→black" };
+
+// Fill in any missing switch with its default (old votes may store partial scopes).
+export function normalizeScope(scope) {
+  return { ...DEFAULT_SORT_SCOPE, ...(scope || {}) };
+}
+
+// Stable identity for a config, so the same combination always groups together.
+export function configKey(methodId, scope) {
+  const s = normalizeScope(scope);
+  return [methodId, s.hueStart, s.greyThreshold, s.within, s.greyOrder].join("|");
+}
+
+// Human label, e.g. "Median · red · normal greys" or "Fine histogram · crimson · loose greys · vivid first".
+export function configLabel(methodId, scope) {
+  const s = normalizeScope(scope);
+  const parts = [
+    getColorMethod(methodId).label,
+    HUE_LABEL[s.hueStart] || `${s.hueStart}°`,
+    `${GREY_LABEL[s.greyThreshold] || `s<${s.greyThreshold}`} greys`,
+  ];
+  if (s.within !== DEFAULT_SORT_SCOPE.within) parts.push(WITHIN_LABEL[s.within] || s.within);
+  if (s.greyOrder !== DEFAULT_SORT_SCOPE.greyOrder) parts.push(GREY_ORDER_LABEL[s.greyOrder] || s.greyOrder);
+  return parts.join(" · ");
+}
+
+// Group vote rows ({ method, scope }) by config. Returns best-first:
+// [{ key, method, scope, label, count }]. Unknown methods are ignored.
+export function tallyConfigs(rows) {
+  const byKey = new Map();
+  for (const r of rows) {
+    if (!r || !COLOR_METHODS.some(m => m.id === r.method)) continue;
+    const key = configKey(r.method, r.scope);
+    const entry = byKey.get(key) || {
+      key, method: r.method, scope: normalizeScope(r.scope),
+      label: configLabel(r.method, r.scope), count: 0,
+    };
+    entry.count++;
+    byKey.set(key, entry);
+  }
+  return [...byKey.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
