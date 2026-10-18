@@ -103,3 +103,23 @@ export function colorValueOf(can, methodId) {
   if (!m) return can.avgColor || null;
   return m[methodId] || null;
 }
+
+// The hue (0-359°) where the spectrum starts. Stored scopes keep the rotation
+// (hueStart), so existing votes stay valid: start = (360 - hueStart) mod 360.
+export function startHueOf(hueStart) {
+  return (360 - ((hueStart % 360) + 360) % 360) % 360;
+}
+export function hueStartFromStartHue(startHue) {
+  return (360 - ((startHue % 360) + 360) % 360) % 360;
+}
+// Named starts (shown in the picker and used for labels).
+export const START_HUE_PRESETS = [
+  { name: "red", startHue: 0 },
+  { name: "orange", startHue: 30 },
+  { name: "yellow", startHue: 60 },
+  { name: "green", startHue: 120 },
+  { name: "blue", startHue: 240 },
+  { name: "purple", startHue: 270 },
+  { name: "magenta", startHue: 300 },
+  { name: "crimson", startHue: 330 },
+];
