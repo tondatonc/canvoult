@@ -2015,3 +2015,11 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **How:** `src/colorMethods.js`: `normalizeScope`, `configKey`, `configLabel`, `tallyConfigs`. `ColorVotePanel` in `App.jsx` takes `methodId`/`scope`/setters. No schema change: votes already stored method + scope.
 
 **Files touched:** `src/colorMethods.js`, `src/colorMethods.test.js` (40 tests with `npm test`), `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-10-17 — v1.7.2: tester share link
+
+**What:** A URL of the form `/?tester=<token>` signs the viewer in as a tester, then strips the token from the address bar. The token is separate from the tester password, so sharing the link doesn't expose the password. Testers get the same access as a password sign-in (read-only plus voting). Revoke by changing `_TT` in `App.jsx` and redeploying, which invalidates existing links.
+
+**How:** `_TT` holds the base64 token, `checkTesterToken` compares it, and a mount effect in `App` reads and clears the parameter.
+
+**Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
