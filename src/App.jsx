@@ -4420,6 +4420,7 @@ function StatsPage({ T, L, isAdmin, canAdvanced = false }) {
         </button>}
         <p style={{ fontFamily: "Georgia,serif", fontSize: 10, color: T.textFaint, fontStyle: "italic" }}>Shows service worker / cache diagnostics overlay</p>
 
+        {isAdmin && (<>
         {/* Migration tool */}
         <MigrateBlobTool T={T} cans={cans} wishes={wishes} wallPhotos={wallPhotos}
           onSaveCan={async (can) => {
@@ -4445,6 +4446,7 @@ function StatsPage({ T, L, isAdmin, canAdvanced = false }) {
             setWishes(p => p.map(x => x.id === w.id ? w : x));
           }}
         />
+        </>)}
       </div>}
     </div>
   );
