@@ -1738,7 +1738,7 @@ function DetailModal({ T, can, isAdmin, onDelete, onEdit, onClose, onDuplicate, 
       {hasNav && navBtn(onPrev, "Previous can (←)", "‹")}
       <div style={{ flex: isMobile ? "none" : 1, minWidth: 0, display: "flex", justifyContent: "center", filter: "drop-shadow(0 10px 22px #00000028)" }}>
         {can.image
-          ? <img src={can.image} loading="lazy" decoding="async" alt={can.name} style={isMobile
+          ? <img src={can.image} alt={can.name} style={isMobile
               ? { width: "auto", maxWidth: "min(300px, 62vw)", height: "auto", maxHeight: "48vh", objectFit: "contain", borderRadius: 10 }
               : { width: "auto", maxWidth: "100%", height: "min(74vh, 800px)", objectFit: "contain", borderRadius: 12 }} />
           : <div style={{ width: isMobile ? "min(220px, 55vw)" : "min(340px, 100%)", aspectRatio: "1/1.6" }}><CanSvg color={color} name={can.name} /></div>}
@@ -2420,7 +2420,7 @@ function BulkTagModal({ T, cans, onSave, onClose }) {
                     {selected.has(c.id) ? "✓" : ""}
                   </div>
                   <div style={{ width: 28, height: 40, flexShrink: 0 }}>
-                    {c.image ? <img src={c.image} loading="lazy" decoding="async" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 3 }} /> : <CanSvg color={getCanColor(c.tags)} name={c.name} />}
+                    {c.image ? <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 3 }} /> : <CanSvg color={getCanColor(c.tags)} name={c.name} />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
@@ -2731,7 +2731,7 @@ function DuplicateWarning({ matches, T, compact = false, where = "COLLECTION" })
         {matches.map(({ can, reason }) => (
           <div key={can.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {can.image
-              ? <img src={can.image} loading="lazy" decoding="async" alt="" style={{ width: 26, height: 36, objectFit: "contain", borderRadius: 3, flexShrink: 0 }} />
+              ? <img src={can.image} alt="" style={{ width: 26, height: 36, objectFit: "contain", borderRadius: 3, flexShrink: 0 }} />
               : <div style={{ width: 26, height: 36, flexShrink: 0 }} />}
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: "Georgia,serif", fontSize: 12, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{can.name}</div>
@@ -2856,7 +2856,7 @@ function DuplicateScanModal({ T, cans, onDeleteCan, onClose }) {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                     {g.cans.map(c => (
                       <div key={c.id} style={{ width: 108, background: T.bgCard, border: `1.5px solid ${T.border}`, borderRadius: 9, padding: 7, textAlign: "center" }}>
-                        <img src={c.image} loading="lazy" decoding="async" alt={c.name} style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6, marginBottom: 5, display: "block", background: T.bgInput }} />
+                        <img src={c.image} alt={c.name} style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6, marginBottom: 5, display: "block", background: T.bgInput }} />
                         <p style={{ fontFamily: "Georgia,serif", fontSize: 10.5, color: T.text, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</p>
                         <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 8, color: T.textFaint, letterSpacing: "0.05em", marginBottom: 6 }}>{c.dateUnknown ? "DATE UNKNOWN" : fmtDate(c.addedAt)}</p>
                         <button
@@ -3420,7 +3420,7 @@ function GridCard({ can, i, T, onClick, pinned, onPin, customColors = {}, hideLa
           </button>
         )}
         <div style={{ width: "55%", height: "80%", position: "relative" }}>
-          {can.image ? <img src={can.image} loading="lazy" decoding="async" alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={can.name} />}
+          {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={can.name} />}
         </div>
       </div>
       {!hideLabel && (
@@ -3451,7 +3451,7 @@ function CollageCard({ item, i, T, onClick, pinned, onPin, customColors = {}, is
       )}
       <div style={{ width: "100%", opacity: isWish ? 0.75 : 1, filter: isWish ? "grayscale(30%)" : "none" }}>
         {item.image
-          ? <img src={item.image} loading="lazy" decoding="async" alt={item.name} loading="lazy"
+          ? <img src={item.image} alt={item.name} loading="lazy"
               onLoad={e => { const r = e.target.naturalWidth / e.target.naturalHeight; if (r && Math.abs(r - asp) > 0.01) { _collageAspect.set(item.image, r); setAsp(r); } }}
               style={{ width: "100%", height: "auto", display: "block" }} />
           : <div style={{ aspectRatio: "3/5" }}><CanSvg color={color} name={item.name} /></div>}
@@ -3471,7 +3471,7 @@ function TileCard({ can, i, T, onClick, pinned, onPin, customColors = {}, tut = 
           <div style={{ position: "absolute", inset: -8, borderRadius: "50%", background: can.avgColor, filter: "blur(9px)", opacity: 0.6, zIndex: 0 }} />
         )}
         <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {can.image ? <img src={can.image} loading="lazy" decoding="async" alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
+          {can.image ? <img src={can.image} alt={can.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={can.name} />}
         </div>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -3701,7 +3701,7 @@ function WishGridCard({ wish, i, T, onClick, pinned = false, onPin = null, hideL
         {onPin && <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ position: "absolute", top: 6, left: 6, background: pinned ? "#C8102E" : "#00000033", border: "none", borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 11, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>{pinned ? "📌" : "📍"}</button>}
         {!hideLabel && <div style={{ position: "absolute", top: 0, right: 10, background: "#C8102E", color: "#fff", fontSize: 8, fontFamily: "'Oswald',sans-serif", letterSpacing: "0.1em", padding: "2px 8px", borderRadius: "0 0 6px 6px" }}>WANT</div>}
         <div style={{ width: "55%", height: "80%", opacity: 0.8, filter: "grayscale(20%)", position: "relative" }}>
-          {wish.image ? <img src={wish.image} loading="lazy" decoding="async" alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={wish.name} />}
+          {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
       </div>
       {!hideLabel && (
@@ -3721,7 +3721,7 @@ function WishTileCard({ wish, i, T, onClick, pinned = false, onPin = null }) {
       onMouseLeave={e => { e.currentTarget.style.borderColor = pinned ? "#C8102E88" : "#e8e0d8"; e.currentTarget.style.boxShadow = ""; }}>
       {onPin && <button onClick={e => { e.stopPropagation(); onPin(); }} style={{ flexShrink: 0, background: pinned ? "#C8102E" : "#e8e0d8", border: "none", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", color: pinned ? "#fff" : "#aaa" }}>{pinned ? "📌" : "📍"}</button>}
       <div style={{ width: 36, height: 56, flexShrink: 0, opacity: 0.75, filter: "grayscale(30%)" }}>
-        {wish.image ? <img src={wish.image} loading="lazy" decoding="async" alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={wish.name} />}
+        {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }} /> : <CanSvg color={color} name={wish.name} />}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, fontSize: 16, letterSpacing: "0.03em", color: T.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{wish.name}</div>
@@ -3778,7 +3778,7 @@ function WishDetailModal({ T, wish, isAdmin, onDelete, onEdit, onClose, onMarkFo
       <div style={{ textAlign: "center" }}>
         <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 9, color: "#C8102E", letterSpacing: "0.2em", marginBottom: 10 }}>★ ON MY WISHLIST ★</div>
         <div style={{ width: 80, height: 120, margin: "0 auto 14px", opacity: 0.8, filter: "grayscale(20%) drop-shadow(0 6px 14px #00000022)" }}>
-          {wish.image ? <img src={wish.image} loading="lazy" decoding="async" alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 10 }} /> : <CanSvg color={color} name={wish.name} />}
+          {wish.image ? <img src={wish.image} alt={wish.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 10 }} /> : <CanSvg color={color} name={wish.name} />}
         </div>
         <div style={{ display: "inline-block", background: "#C8102E", color: "#fff", fontFamily: "'Fjalla One',sans-serif", fontWeight: 400, letterSpacing: "0.04em", fontSize: 24, padding: "6px 20px", borderRadius: "999px", marginBottom: 8 }}>{wish.name}</div>
         {resolvedCountries.length > 0 && (
@@ -3950,7 +3950,7 @@ function CanWallPage({ T, L, isAdmin }) {
               onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.02)"; e.currentTarget.style.borderColor = "#C8102E"; e.currentTarget.style.boxShadow = "0 8px 28px #C8102E22"; }}
               onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = T.border; e.currentTarget.style.boxShadow = "0 3px 12px #00000010"; }}>
               <div style={{ width: "100%", height: 200, overflow: "hidden" }}>
-                <img src={photo.image} loading="lazy" decoding="async" alt={photo.caption || "Can wall"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={photo.image} alt={photo.caption || "Can wall"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
               {(photo.caption || true) && (
                 <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -4390,7 +4390,7 @@ function StatsPage({ T, L, isAdmin, canAdvanced = false }) {
                 return (
                   <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, background: T.bgInput, border: `1.5px solid ${T.border}`, borderRadius: 9, padding: "7px 10px", minWidth: 0 }}>
                     <div style={{ width: 28, height: 42, flexShrink: 0 }}>
-                      {c.image ? <img src={c.image} loading="lazy" decoding="async" alt={c.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 3 }} /> : <CanSvg color={color} name={c.name} />}
+                      {c.image ? <img src={c.image} alt={c.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 3 }} /> : <CanSvg color={color} name={c.name} />}
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 120 }}>{c.name}</div>
@@ -4799,7 +4799,7 @@ function BadCropAuditTool({ T, cans, wishes, onSaveCan, onSaveWish }) {
                       backgroundSize: "8px 8px",
                       backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
                     }}>
-                      <img src={item.image} loading="lazy" decoding="async" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={e => e.target.style.display = "none"} />
+                      <img src={item.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} onError={e => e.target.style.display = "none"} />
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
