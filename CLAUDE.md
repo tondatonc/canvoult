@@ -2067,3 +2067,15 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **Not yet verified on a device:** the build succeeds and emits the legacy chunks, but this has not been tested on a real Kindle. If it still fails, the diagnostic overlay will show it, and the next suspects are memory limits or missing browser APIs.
 
 **Files touched:** `vite.config.js`, `package.json`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-11-03 — v1.8.5: lazy-load can photos (Kindle freeze)
+
+**Symptom:** on an 11th-gen Kindle (default "Web Browser") the app now loads, the icon spins, then the page stops responding.
+
+**Likely cause:** the collection and wishlist grids render every can's full-size photo at once. An e-reader can't decode that many images, so the main thread locks up.
+
+**Fix:** `loading="lazy" decoding="async"` on the can and wish photo `<img>` tags in `App.jsx`, so only visible photos load. Older WebKit versions may ignore `loading="lazy"`; if the freeze persists, the next step is serving thumbnails instead of full-size images in grids.
+
+**Not verified on a device.**
+
+**Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
