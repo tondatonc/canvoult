@@ -2057,3 +2057,13 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **Fix:** those three tools now render only when `isAdmin` is set. The export and advanced stats remain visible to testers and admins. The other edit, crop, copy, remove, pin and bulk actions were already admin-only and were checked again.
 
 **Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-11-03 — v1.8.4: works on Kindle / e-reader browsers
+
+**Bug:** On a Kindle, the page showed the diagnostic overlay ("CanVault couldn't load"), meaning the React bundle never mounted. The default Vite build emits modern ES module JavaScript (and newer syntax) that the Kindle's old browser cannot parse.
+
+**Fix:** added `@vitejs/plugin-legacy` (devDependency, plus `terser`). `vite.config.js` now also builds an ES5-compatible bundle with polyfills and serves it through the `nomodule` fallback. Modern browsers still load the normal bundle; old browsers load the legacy one. The inline diagnostic overlay in `index.html` is unchanged.
+
+**Not yet verified on a device:** the build succeeds and emits the legacy chunks, but this has not been tested on a real Kindle. If it still fails, the diagnostic overlay will show it, and the next suspects are memory limits or missing browser APIs.
+
+**Files touched:** `vite.config.js`, `package.json`, `src/version.js`, `CLAUDE.md`.
