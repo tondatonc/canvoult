@@ -7,6 +7,14 @@ import legacy from '@vitejs/plugin-legacy'
 // it via a nomodule fallback, so old browsers get working JS while modern
 // browsers keep the normal fast build.
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        low: 'low.html',
+      },
+    },
+  },
   plugins: [
     react(),
     legacy({
