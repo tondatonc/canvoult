@@ -2087,3 +2087,13 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **Root cause (Kindle):** photos are stored as full-size, uncompressed uploads (`api/client-upload-token.mjs`), so each can photo is several MB. An e-reader can't decode many of these. The real fix is thumbnails: generate a small copy in the browser at upload, store its URL in a new column, and use it in grids. This needs a Supabase migration, so it is not done yet.
 
 **Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-11-03 — v1.9.0: /low page for low-power devices
+
+**What:** `canvault.vercel.app/low` is a separate, minimal page (`low.html` + `src/low.js`). It has no React, no service worker, no fonts or animations. It shows a searchable text list of cans (name, tags, countries). Photos load only when the user taps "Show photo", one at a time.
+
+**Why:** the full app freezes and crashes on an 11th-gen Kindle. The low page avoids the main bundle and the heavy photo grids.
+
+**Limits:** it still uses full-size photos (no thumbnail pipeline yet), so photos can be slow on the device. It's read-only: no adding, editing or tagging. Vite builds it as a second entry point; `vercel.json` rewrites `/low` to `/low.html`.
+
+**Files touched:** `low.html`, `src/low.js`, `vite.config.js`, `vercel.json`, `src/version.js`, `CLAUDE.md`.
