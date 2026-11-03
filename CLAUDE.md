@@ -2079,3 +2079,11 @@ The switches combine freely. Admin choices persist in localStorage (`cv_color_so
 **Not verified on a device.**
 
 **Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
+
+## 2026-11-03 — v1.8.6: revert lazy-load photos
+
+**Why:** v1.8.5 added `loading="lazy"` to can and wish photos. On Tonda's phone some photos stopped appearing, so the change was reverted. It did not fix the Kindle freeze.
+
+**Root cause (Kindle):** photos are stored as full-size, uncompressed uploads (`api/client-upload-token.mjs`), so each can photo is several MB. An e-reader can't decode many of these. The real fix is thumbnails: generate a small copy in the browser at upload, store its URL in a new column, and use it in grids. This needs a Supabase migration, so it is not done yet.
+
+**Files touched:** `src/App.jsx`, `src/version.js`, `CLAUDE.md`.
